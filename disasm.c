@@ -60,7 +60,7 @@ bool validate_elf_header(Elf64_Ehdr *header) {
         return false;
 
     // TODO: support more than 64-bit x86_64 static executables
-    if (header->e_version != 1 || (header->e_type != 2 /*&& header->e_type != 3*/) || header->e_machine != 0x3e)
+    if (header->e_version != 1 || (header->e_type != 2 && header->e_type != 3) || header->e_machine != 0x3e)
         return false;
 
     return true;

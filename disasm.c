@@ -38,24 +38,6 @@ typedef struct elf_ident_s {
 bool validate_elf_header(Elf64_Ehdr *header) {
     elf_ident_t elf_ident = *((elf_ident_t *)header);
     
-    /*printf("ei_magic (int): %x\n", elf_ident.ei_magic.value);
-    printf("ei_magic (bytes):");
-
-    for (int i = 0; i < 4; i++) {
-        printf(" %c (0x%x)", elf_ident.ei_magic.bytes[i], elf_ident.ei_magic.bytes[i]);
-    }
-    printf("\n");
-
-    printf("ei_class: %x\n", elf_ident.ei_class);
-    printf("ei_data: %x\n", elf_ident.ei_data);
-    printf("ei_version: %x\n", elf_ident.ei_version);
-    printf("ei_osabi: %x\n", elf_ident.ei_osabi);
-    printf("ei_abiversion: %x\n", elf_ident.ei_abiversion);
-
-    printf("e_type: %x\n", header->e_type);
-    printf("e_machine: %x\n", header->e_machine);
-    printf("e_version: %x\n", header->e_version);*/
-
     if (elf_ident.ei_magic.value != 0x464c457f)
         return false;
 
@@ -64,22 +46,6 @@ bool validate_elf_header(Elf64_Ehdr *header) {
         return false;
 
     return true;
-}
-
-void print_strtab(Elf64_Shdr *strtab_header, void *elf_data, void *shstrtab) {
-    char* sh_name = (char*) (shstrtab + strtab_header->sh_name);
-    printf("strtab %s:\n", sh_name);
-    char* data = (char*) (elf_data + strtab_header->sh_offset);
-    for (uint64_t i = 0; i < strtab_header->sh_size; i++) {
-        if (isprint(data[i]))
-            printf("%c", data[i]);
-        else if (data[i] == '\0')
-            printf("\n");
-        else
-            printf("\\x%x", data[i]);
-    }
-
-    printf("\n");
 }
 
 size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size_t len, void *ip, uint64_t* jump_target) {

@@ -159,6 +159,46 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
     }
 }
 
+void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab) {
+    uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
+    uint64_t code_begin = section->sh_addr;
+    uint64_t code_end = code_begin + section->sh_size;
+
+    // fill symbol table
+    sym_table_entry_t sym_table[section->sh_size];
+    memset(sym_table, 0, section->sh_size * sizeof(*sym_table));
+
+    for (uint64_t i = 1; i < symtab_sz; i++) {
+        Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
+
+        // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
+        if (sym->st_value < code_begin || sym->st_value >= code_end)
+           continue;
+
+        uint64_t idx = sym->st_value - code_begin;
+        sym_table_entry_t val = { 0, sym };
+        sym_table[idx] = val;
+    }
+
+    // patch up symbol table
+    sym_table_entry_t last = {0};
+    for (size_t i = 0; i < section->sh_size; i++) {
+        sym_table_entry_t curr = sym_table[i];
+
+        if ((curr.sym != 0 || last.sym == 0) && last.sym != curr.sym) {
+            last = curr;
+            continue;
+        }
+
+        last.last_dist++;
+        sym_table[i] = last;
+    }
+
+    void* code = elf_data + section->sh_offset;
+    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, elf_strtab_data, sym_table, section->sh_size);
+
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <elf...>\n", argv[0]);
@@ -203,7 +243,8 @@ int main(int argc, char** argv) {
     Elf64_Shdr *elf_strtab;
     Elf64_Shdr *elf_symtab;
 
-    Elf64_Shdr *elf_text;
+    Elf64_Shdr *elf_execs[elf_header->e_shnum];
+    size_t elf_execs_cnt = 0;
         
     for (int i = 0; i < elf_header->e_shnum; i++) {
         Elf64_Shdr shdr = elf_shdr[i];
@@ -223,9 +264,9 @@ int main(int argc, char** argv) {
             elf_strtab = elf_shdr + i;
         }
 
-        if (shdr.sh_flags & SHF_EXECINSTR && !strcmp(name, ".text")) {
-            fprintf(stderr, ".text found at: %p\n", &shdr);
-            elf_text = elf_shdr + i;
+        if (shdr.sh_flags & SHF_EXECINSTR) {
+            fprintf(stderr, "found exec section '%s' at: %p\n", name, &shdr);
+            elf_execs[elf_execs_cnt++] = elf_shdr + i;
         }
     }
 
@@ -240,44 +281,16 @@ int main(int argc, char** argv) {
     }
 
     void *elf_strtab_data = (elf_data + elf_strtab->sh_offset);
-    
-    uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
 
-    uint64_t code_begin = elf_text->sh_addr;
-    uint64_t code_end = code_begin + elf_text->sh_size;
+    for (size_t i = 0; i < elf_execs_cnt; i++) {
+        Elf64_Shdr *shdr = elf_execs[i];
 
-    // fill symbol table
-    sym_table_entry_t sym_table[elf_text->sh_size];
-    memset(sym_table, 0, elf_text->sh_size * sizeof(*sym_table));
+        char* name = elf_shstrtab_data + shdr->sh_name;
 
-    for (uint64_t i = 1; i < symtab_sz; i++) {
-        Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
+        printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", name);
 
-        // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
-        if (sym->st_value < code_begin || sym->st_value >= code_end)
-           continue; 
-
-        uint64_t idx = sym->st_value - code_begin;
-        sym_table_entry_t val = { 0, sym };
-        sym_table[idx] = val;
+        print_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab);
     }
-
-    // patch up symbol table
-    sym_table_entry_t last = {0};
-    for (size_t i = 0; i < elf_text->sh_size; i++) {
-        sym_table_entry_t curr = sym_table[i];
-
-        if ((curr.sym != 0 || last.sym == 0) && last.sym != curr.sym) {
-            last = curr;
-            continue;
-        }
-
-        last.last_dist++;
-        sym_table[i] = last;
-    }
-    
-    void* code = elf_data + elf_text->sh_offset;
-    print_disassembly((uint8_t *) code, elf_text->sh_size, (void *) code_begin, elf_strtab_data, sym_table, elf_text->sh_size);
 
     munmap(elf_data, file_size);
 

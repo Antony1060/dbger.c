@@ -35,6 +35,11 @@ typedef struct elf_ident_s {
     uint8_t ei_pad[7];
 } elf_ident_t;
 
+typedef struct sym_table_entry_s {
+    size_t last_dist;
+    Elf64_Sym *sym;
+} sym_table_entry_t;
+
 bool validate_elf_header(Elf64_Ehdr *header) {
     elf_ident_t elf_ident = *((elf_ident_t *)header);
     
@@ -106,7 +111,7 @@ void color_instruction(char* buffer, char* new_buffer) {
     sprintf(new_buffer, BLU "%.*s" CRESET "\t " HGRN "%.*s" CRESET, inst_len, inst, params_len, params);
 }
 
-void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, Elf64_Sym **sym_table, size_t sym_table_len) {
+void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, sym_table_entry_t *sym_table, size_t sym_table_len) {
     char buffer[256];
     char formatted_buffer[256];
     void *ip = start_addr;
@@ -120,9 +125,10 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
         }
 
         uint64_t table_idx = ((uint64_t) ip) - (uint64_t) start_addr;
+        sym_table_entry_t entry = sym_table[table_idx];
         // table_idx should always be within bounds of sym_table
-        if (table_idx < sym_table_len && sym_table[table_idx] != 0) {
-            char *sym_name = (char *) strtab + sym_table[table_idx]->st_name;
+        if (table_idx < sym_table_len && entry.sym != 0 && entry.last_dist == 0) {
+            char *sym_name = (char *) strtab + entry.sym->st_name;
             printf("\n" HCYN "%s" HBLK ":" CRESET "\n", sym_name);
         }
 
@@ -132,9 +138,16 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
 
         if (jump_target) {
             uint64_t target_table_idx = jump_target - (uint64_t) start_addr;
-            if (target_table_idx < sym_table_len && sym_table[target_table_idx] != 0) {
-                char *sym_name = (char *) strtab + sym_table[target_table_idx]->st_name; 
-                printf(" <" GRN "%s" CRESET ">", sym_name);
+            sym_table_entry_t target_entry = sym_table[target_table_idx];
+            if (target_table_idx < sym_table_len && target_entry.sym != 0) {
+                char *sym_name = (char *) strtab + target_entry.sym->st_name; 
+                printf(" <" GRN "%s", sym_name);
+                
+                if (target_entry.last_dist != 0) {
+                    printf(HBLU "+0x%lx", target_entry.last_dist);
+                }
+
+                printf(CRESET ">");
             }
         }
 
@@ -233,7 +246,8 @@ int main(int argc, char** argv) {
     uint64_t code_begin = elf_text->sh_addr;
     uint64_t code_end = code_begin + elf_text->sh_size;
 
-    Elf64_Sym *sym_table[elf_text->sh_size];
+    // fill symbol table
+    sym_table_entry_t sym_table[elf_text->sh_size];
     memset(sym_table, 0, elf_text->sh_size * sizeof(*sym_table));
 
     for (uint64_t i = 1; i < symtab_sz; i++) {
@@ -244,7 +258,22 @@ int main(int argc, char** argv) {
            continue; 
 
         uint64_t idx = sym->st_value - code_begin;
-        sym_table[idx] = sym;
+        sym_table_entry_t val = { 0, sym };
+        sym_table[idx] = val;
+    }
+
+    // patch up symbol table
+    sym_table_entry_t last = {0};
+    for (size_t i = 0; i < elf_text->sh_size; i++) {
+        sym_table_entry_t curr = sym_table[i];
+
+        if ((curr.sym != 0 || last.sym == 0) && last.sym != curr.sym) {
+            last = curr;
+            continue;
+        }
+
+        last.last_dist++;
+        sym_table[i] = last;
     }
     
     void* code = elf_data + elf_text->sh_offset;

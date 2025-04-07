@@ -46,7 +46,7 @@ bool validate_elf_header(Elf64_Ehdr *header) {
     if (elf_ident.ei_magic.value != 0x464c457f)
         return false;
 
-    // TODO: support more than 64-bit x86_64 static executables
+    // TODO: support more than 64-bit x86_64 executables
     if (header->e_version != 1 || (header->e_type != 2 && header->e_type != 3) || header->e_machine != 0x3e)
         return false;
 
@@ -159,7 +159,14 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
     }
 }
 
-void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab) {
+typedef struct plt_data_s {
+    bool is_plt;
+    Elf64_Shdr *rela_plt;
+    Elf64_Shdr *dynsym;
+    void *dynstr_data;
+} plt_data_t;
+
+void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, plt_data_t plt_data) {
     uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
     uint64_t code_begin = section->sh_addr;
     uint64_t code_end = code_begin + section->sh_size;
@@ -168,16 +175,31 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
     sym_table_entry_t sym_table[section->sh_size];
     memset(sym_table, 0, section->sh_size * sizeof(*sym_table));
 
-    for (uint64_t i = 1; i < symtab_sz; i++) {
-        Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
+    if (!plt_data.is_plt) {
+        for (uint64_t i = 1; i < symtab_sz; i++) {
+            Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
 
-        // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
-        if (sym->st_value < code_begin || sym->st_value >= code_end)
-           continue;
+            // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
+            if (sym->st_value < code_begin || sym->st_value >= code_end)
+                continue;
 
-        uint64_t idx = sym->st_value - code_begin;
-        sym_table_entry_t val = { 0, sym };
-        sym_table[idx] = val;
+            uint64_t idx = sym->st_value - code_begin;
+            sym_table_entry_t val = { 0, sym };
+            sym_table[idx] = val;
+        }
+    } else {
+        for (size_t i = 1; i < section->sh_size / 16; i++) {
+            uint64_t addr = code_begin + (i * 16);
+            
+            Elf64_Rela *rela = ((Elf64_Rela *) (elf_data + plt_data.rela_plt->sh_offset)) + (i - 1);
+            uint64_t dynsym_idx = ELF64_R_SYM(rela->r_info);
+
+            Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + plt_data.dynsym->sh_offset)) + dynsym_idx;
+
+            uint64_t idx = addr - code_begin;
+            sym_table_entry_t val = { 0, sym };
+            sym_table[idx] = val;
+        }
     }
 
     // patch up symbol table
@@ -195,7 +217,9 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
     }
 
     void* code = elf_data + section->sh_offset;
-    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, elf_strtab_data, sym_table, section->sh_size);
+
+    void *strtab = !plt_data.is_plt ? elf_strtab_data : plt_data.dynstr_data;
+    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, strtab, sym_table, section->sh_size);
 
 }
 
@@ -243,30 +267,51 @@ int main(int argc, char** argv) {
     Elf64_Shdr *elf_strtab;
     Elf64_Shdr *elf_symtab;
 
+    Elf64_Shdr *elf_rela_plt;
+    Elf64_Shdr *elf_dynsym;
+    Elf64_Shdr *elf_dynstr;
+
     Elf64_Shdr *elf_execs[elf_header->e_shnum];
     size_t elf_execs_cnt = 0;
         
-    for (int i = 0; i < elf_header->e_shnum; i++) {
+    for (uint64_t i = 0; i < elf_header->e_shnum; i++) {
         Elf64_Shdr shdr = elf_shdr[i];
 
         if (shdr.sh_type == SHT_NULL)
             continue;
 
         char* name = elf_shstrtab_data + shdr.sh_name;
-    
+   
+        Elf64_Shdr *addr = (Elf64_Shdr *) elf_shdr + i;
+
         if (shdr.sh_type == SHT_SYMTAB) {
-            fprintf(stderr, "symtab found at: %p\n", &shdr); 
-            elf_symtab = elf_shdr + i;
+            fprintf(stderr, "symtab found at: %p\n", addr); 
+            elf_symtab = addr;
         }
 
         if (shdr.sh_type == SHT_STRTAB && i != elf_header->e_shstrndx) {
-            fprintf(stderr, "strtab found at: %p\n", &shdr);
-            elf_strtab = elf_shdr + i;
+            fprintf(stderr, "strtab found at: %p\n", addr);
+            elf_strtab = addr;
+        }
+
+        if (shdr.sh_type == SHT_RELA && !strcmp(name, ".rela.plt")) {
+            fprintf(stderr, ".rela.plt found at: %p\n", addr);
+            elf_rela_plt = addr;
+        }
+
+        if (shdr.sh_type == SHT_DYNSYM) {
+            fprintf(stderr, "dynsym found at: %p\n", addr);
+            elf_dynsym = addr;
+        }
+
+        if (shdr.sh_type == SHT_STRTAB && !strcmp(name, ".dynstr")) {
+            fprintf(stderr, ".dynstr found at: %p\n", addr);
+            elf_dynstr = addr;
         }
 
         if (shdr.sh_flags & SHF_EXECINSTR) {
-            fprintf(stderr, "found exec section '%s' at: %p\n", name, &shdr);
-            elf_execs[elf_execs_cnt++] = elf_shdr + i;
+            fprintf(stderr, "found exec section '%s' at: %p\n", name, addr);
+            elf_execs[elf_execs_cnt++] = addr;
         }
     }
 
@@ -288,8 +333,16 @@ int main(int argc, char** argv) {
         char* name = elf_shstrtab_data + shdr->sh_name;
 
         printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", name);
+        
+        plt_data_t plt_data = {0};
+        if (!strcmp(name, ".plt")) {
+            plt_data.is_plt = 1;
+            plt_data.rela_plt = elf_rela_plt;
+            plt_data.dynsym = elf_dynsym;
+            plt_data.dynstr_data = (elf_data + elf_dynstr->sh_offset);
+        }
 
-        print_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab);
+        print_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab, plt_data);
     }
 
     munmap(elf_data, file_size);

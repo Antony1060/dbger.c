@@ -229,6 +229,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    char *target_section = 0;
+
+    if (argc >= 3) {
+        target_section = argv[2];
+        for (char *begin = target_section; *begin != '\0'; begin++) {
+            *begin = tolower(*begin);
+        }
+    }
+
     xed_tables_init();
 
     int fd;
@@ -331,6 +340,9 @@ int main(int argc, char** argv) {
         Elf64_Shdr *shdr = elf_execs[i];
 
         char* name = elf_shstrtab_data + shdr->sh_name;
+
+        if (target_section && strcmp(name, target_section))
+            continue;
 
         printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", name);
         

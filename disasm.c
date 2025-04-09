@@ -35,9 +35,12 @@ typedef struct elf_ident_s {
     uint8_t ei_pad[7];
 } elf_ident_t;
 
+static char* PLT_STUB_NAME = "__plt_resolver_stub";
+
 typedef struct sym_table_entry_s {
     size_t last_dist;
-    Elf64_Sym *sym;
+    // most of the time sym->st_name, but sometimes I need a custom name
+    char *name;
 } sym_table_entry_t;
 
 bool validate_elf_header(Elf64_Ehdr *header) {
@@ -111,7 +114,7 @@ void color_instruction(char* buffer, char* new_buffer) {
     sprintf(new_buffer, BLU "%.*s" CRESET "\t " HGRN "%.*s" CRESET, inst_len, inst, params_len, params);
 }
 
-void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, sym_table_entry_t *sym_table, size_t sym_table_len) {
+void print_disassembly(uint8_t *code, size_t n, void* start_addr, sym_table_entry_t *sym_table, size_t sym_table_len) {
     char buffer[256];
     char formatted_buffer[256];
     void *ip = start_addr;
@@ -127,9 +130,8 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
         uint64_t table_idx = ((uint64_t) ip) - (uint64_t) start_addr;
         sym_table_entry_t entry = sym_table[table_idx];
         // table_idx should always be within bounds of sym_table
-        if (table_idx < sym_table_len && entry.sym != 0 && entry.last_dist == 0) {
-            char *sym_name = (char *) strtab + entry.sym->st_name;
-            printf("\n" HCYN "%s" HBLK ":" CRESET "\n", sym_name);
+        if (table_idx < sym_table_len && entry.name != 0 && entry.last_dist == 0) {
+            printf("\n" HCYN "%s" HBLK ":" CRESET "\n", entry.name);
         }
 
         color_instruction(buffer, formatted_buffer);
@@ -139,9 +141,8 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, void* strtab, 
         if (jump_target) {
             uint64_t target_table_idx = jump_target - (uint64_t) start_addr;
             sym_table_entry_t target_entry = sym_table[target_table_idx];
-            if (target_table_idx < sym_table_len && target_entry.sym != 0) {
-                char *sym_name = (char *) strtab + target_entry.sym->st_name; 
-                printf(" <" GRN "%s", sym_name);
+            if (target_table_idx < sym_table_len && target_entry.name != 0) {
+                printf(" <" GRN "%s", target_entry.name);
                 
                 if (target_entry.last_dist != 0) {
                     printf(HBLU "+0x%lx", target_entry.last_dist);
@@ -177,17 +178,19 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
     if (!plt_data.is_plt) {
         for (uint64_t i = 1; i < symtab_sz; i++) {
-            Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
+            Elf64_Sym *sym = ((Elf64_Sym *) (elf_strtab_data + elf_symtab->sh_offset)) + i;
 
             // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
             if (sym->st_value < code_begin || sym->st_value >= code_end)
                 continue;
 
             uint64_t idx = sym->st_value - code_begin;
-            sym_table_entry_t val = { 0, sym };
+            sym_table_entry_t val = { 0, elf_strtab_data + sym->st_name };
             sym_table[idx] = val;
         }
     } else {
+        sym_table_entry_t stub_val = { 0, PLT_STUB_NAME };
+        sym_table[0] = stub_val;
         for (size_t i = 1; i < section->sh_size / 16; i++) {
             uint64_t addr = code_begin + (i * 16);
             
@@ -197,7 +200,7 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
             Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + plt_data.dynsym->sh_offset)) + dynsym_idx;
 
             uint64_t idx = addr - code_begin;
-            sym_table_entry_t val = { 0, sym };
+            sym_table_entry_t val = { 0, plt_data.dynstr_data + sym->st_name };
             sym_table[idx] = val;
         }
     }
@@ -207,7 +210,7 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
     for (size_t i = 0; i < section->sh_size; i++) {
         sym_table_entry_t curr = sym_table[i];
 
-        if ((curr.sym != 0 || last.sym == 0) && last.sym != curr.sym) {
+        if ((curr.name != 0 || last.name == 0) && last.name != curr.name) {
             last = curr;
             continue;
         }
@@ -218,8 +221,7 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
     void* code = elf_data + section->sh_offset;
 
-    void *strtab = !plt_data.is_plt ? elf_strtab_data : plt_data.dynstr_data;
-    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, strtab, sym_table, section->sh_size);
+    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, section->sh_size);
 
 }
 

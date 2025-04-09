@@ -213,7 +213,8 @@ void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *rela, p
 
         Elf64_Vernaux *vna = walk_versions(vns, version_index);
 
-        version = plt_data.dynstr_data + vna->vna_name;
+        if (vna)
+            version = plt_data.dynstr_data + vna->vna_name;
     }   
 
     if (version)

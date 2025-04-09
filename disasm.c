@@ -48,6 +48,12 @@ typedef struct sym_table_entry_s {
     char *name;
 } sym_table_entry_t;
 
+typedef struct sym_table_s {
+    sym_table_entry_t *items;
+    size_t length;
+    uint64_t start_addr;
+} sym_table_t;
+
 typedef struct plt_data_s {
     bool is_plt;
     Elf64_Shdr *rela_plt;
@@ -216,7 +222,7 @@ void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *rela, p
         sprintf(buffer, "%s", name);
 }
 
-void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_entry_t *sym_table, size_t sym_table_len, plt_data_t plt_data) {
+void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_t *sym_table, sym_table_t *plt_sym_table, plt_data_t plt_data) {
     char buffer[256];
     char formatted_buffer[256];
     void *ip = start_addr;
@@ -230,10 +236,13 @@ void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr
         }
 
         uint64_t table_idx = ((uint64_t) ip) - (uint64_t) start_addr;
-        sym_table_entry_t entry = sym_table[table_idx];
         // table_idx should always be within bounds of sym_table
-        if (table_idx < sym_table_len && entry.name != 0 && entry.last_dist == 0) {
-            printf("\n" HCYN "%s" HBLK ":" CRESET "\n", entry.name);
+        if (table_idx < sym_table->length) {
+            sym_table_entry_t entry = sym_table->items[table_idx];
+
+            if (entry.name != 0 && entry.last_dist == 0) {
+                printf("\n" HCYN "%s" HBLK ":" CRESET "\n", entry.name);
+            }
         }
 
         color_instruction(buffer, formatted_buffer);
@@ -241,9 +250,9 @@ void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr
         printf("\t" HYEL "%p" HBLK ":\t" HGRN "%s" CRESET, ip, formatted_buffer);
 
         if (jump_target) {
-            uint64_t target_table_idx = jump_target - (uint64_t) start_addr;
-            if (target_table_idx < sym_table_len && sym_table[target_table_idx].name != 0) {
-                sym_table_entry_t target_entry = sym_table[target_table_idx];
+            uint64_t target_table_idx = jump_target - sym_table->start_addr;
+            if (target_table_idx < sym_table->length && sym_table->items[target_table_idx].name != 0) {
+                sym_table_entry_t target_entry = sym_table->items[target_table_idx];
                 printf(" <" GRN "%s", target_entry.name);
                 
                 if (target_entry.last_dist != 0) {
@@ -251,6 +260,18 @@ void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr
                 }
 
                 printf(CRESET ">");
+            } else if (plt_sym_table) {
+                target_table_idx = jump_target - plt_sym_table->start_addr;
+                if (target_table_idx < plt_sym_table->length && plt_sym_table->items[target_table_idx].name != 0) {
+                    sym_table_entry_t target_entry = plt_sym_table->items[target_table_idx];
+                    printf(" <" HBLU "plt" HBLK ":" GRN "%s", target_entry.name);
+                
+                    if (target_entry.last_dist != 0) {
+                        printf(HBLU "+0x%lx", target_entry.last_dist);
+                    }
+
+                    printf(CRESET ">");
+                }
             }
     
             // if we're logging a plt table, it's nice to show that a jump is going to a GOT (like objdump -d -j .plt shows)
@@ -282,14 +303,15 @@ void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr
     }
 }
 
-void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, plt_data_t plt_data) {
+void handle_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, bool do_print, plt_data_t plt_data, sym_table_t *plt_sym_table, sym_table_t *sym_table) {
     uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
     uint64_t code_begin = section->sh_addr;
     uint64_t code_end = code_begin + section->sh_size;
 
+    sym_table->start_addr = code_begin;
+
     // fill symbol table
-    sym_table_entry_t sym_table[section->sh_size];
-    memset(sym_table, 0, section->sh_size * sizeof(*sym_table));
+    memset(sym_table->items, 0, sym_table->length * sizeof(*sym_table->items));
 
     if (!plt_data.is_plt) {
         for (uint64_t i = 1; i < symtab_sz; i++) {
@@ -301,11 +323,11 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
             uint64_t idx = sym->st_value - code_begin;
             sym_table_entry_t val = { 0, elf_strtab_data + sym->st_name };
-            sym_table[idx] = val;
+            sym_table->items[idx] = val;
         }
     } else {
         sym_table_entry_t stub_val = { 0, PLT_STUB_NAME };
-        sym_table[0] = stub_val;
+        sym_table->items[0] = stub_val;
         for (size_t i = 1; i < section->sh_size / 16; i++) {
             uint64_t addr = code_begin + (i * 16);
             
@@ -316,14 +338,14 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
             uint64_t idx = addr - code_begin;
             sym_table_entry_t val = { 0, plt_data.dynstr_data + sym->st_name };
-            sym_table[idx] = val;
+            sym_table->items[idx] = val;
         }
     }
 
     // patch up symbol table
     sym_table_entry_t last = {0};
     for (size_t i = 0; i < section->sh_size; i++) {
-        sym_table_entry_t curr = sym_table[i];
+        sym_table_entry_t curr = sym_table->items[i];
 
         if ((curr.name != 0 || last.name == 0) && last.name != curr.name) {
             last = curr;
@@ -331,12 +353,13 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
         }
 
         last.last_dist++;
-        sym_table[i] = last;
+        sym_table->items[i] = last;
     }
 
     void* code = elf_data + section->sh_offset;
 
-    print_disassembly(elf_data, (uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, section->sh_size, plt_data);
+    if (do_print)
+        print_disassembly(elf_data, (uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, plt_sym_table, plt_data);
 }
 
 int main(int argc, char** argv) {
@@ -465,16 +488,13 @@ int main(int argc, char** argv) {
 
     void *elf_strtab_data = (elf_data + elf_strtab->sh_offset);
 
+    sym_table_t *plt_sym_table;
+
     for (size_t i = 0; i < elf_execs_cnt; i++) {
         Elf64_Shdr *shdr = elf_execs[i];
 
         char* name = elf_shstrtab_data + shdr->sh_name;
 
-        if (target_section && strcmp(name, target_section))
-            continue;
-
-        printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", name);
-        
         plt_data_t plt_data = {0};
         if (!strcmp(name, ".plt")) {
             plt_data.is_plt = 1;
@@ -486,9 +506,29 @@ int main(int argc, char** argv) {
             plt_data.gnu_version_r = elf_gnu_version_r;
         }
 
-        print_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab, plt_data);
+        sym_table_t *sym_table = malloc(sizeof(sym_table_t));
+        sym_table->items = malloc(shdr->sh_size * sizeof(*sym_table->items));
+        sym_table->length = shdr->sh_size;
+
+        bool should_print = !target_section || !strcmp(name, target_section);
+
+        if (should_print)
+            printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", name);
+
+        handle_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab, should_print, plt_data, plt_sym_table, sym_table);
+
+        if (plt_data.is_plt) {
+            plt_sym_table = sym_table;
+        } else {
+            free(sym_table->items);
+            free(sym_table);
+        }
     }
 
+    if (plt_sym_table) {
+        free(plt_sym_table->items);
+        free(plt_sym_table);
+    }
     munmap(elf_data, file_size);
 
     return 0;

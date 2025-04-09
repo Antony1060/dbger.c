@@ -15,6 +15,11 @@
 
 #include "ansi.c"
 
+//
+//  THIS. IS. NOT. GOOD. CODE. PLEASE. READ. IT. WITH. CAUTION. THANK. YOU.
+//      I. AM. LOSING. MY. MIND. HELP. 
+//
+
 #define errquit(s) do { \
     fprintf(stderr, "ERROR: "s": %s (%s)\n", strerror(errno), strerrorname_np(errno)); \
     exit(1); \
@@ -35,13 +40,23 @@ typedef struct elf_ident_s {
     uint8_t ei_pad[7];
 } elf_ident_t;
 
-static char* PLT_STUB_NAME = "__plt_resolver_stub";
+static char* PLT_STUB_NAME = "__resolver_stub";
 
 typedef struct sym_table_entry_s {
     size_t last_dist;
     // most of the time sym->st_name, but sometimes I need a custom name
     char *name;
 } sym_table_entry_t;
+
+typedef struct plt_data_s {
+    bool is_plt;
+    Elf64_Shdr *rela_plt;
+    Elf64_Shdr *dynsym;
+    void *dynstr_data;
+
+    Elf64_Shdr *gnu_version;
+    Elf64_Shdr *gnu_version_r;
+} plt_data_t;
 
 bool validate_elf_header(Elf64_Ehdr *header) {
     elf_ident_t elf_ident = *((elf_ident_t *)header);
@@ -54,6 +69,56 @@ bool validate_elf_header(Elf64_Ehdr *header) {
         return false;
 
     return true;
+}
+
+uint64_t find_jump_target_after_rip(xed_decoded_inst_t *xedd, void *ip, size_t inst_len) {
+    size_t memop_len = xed_decoded_inst_number_of_memory_operands(xedd); 
+    for (size_t i = 0; i < memop_len; i++) {
+        xed_int64_t disp = xed_decoded_inst_get_memory_displacement(xedd, i);
+    
+        return (uint64_t) ip + inst_len + disp;
+    }
+    return 0;
+}
+
+uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst_len) {
+    xed_category_enum_t category = xed_decoded_inst_get_category(xedd);
+    
+    if (category != XED_CATEGORY_COND_BR && category != XED_CATEGORY_UNCOND_BR && category != XED_CATEGORY_CALL)
+        return 0;
+   
+    const xed_inst_t *inst = xed_decoded_inst_inst(xedd);
+    uint32_t operands_len = xed_inst_noperands(inst);
+
+    for (uint32_t i = 0; i < operands_len; i++) {
+        const xed_operand_t *op = xed_inst_operand(inst, i);
+        xed_operand_enum_t op_name = xed_operand_name(op);
+
+        switch (op_name) {
+            case XED_OPERAND_PTR:
+            case XED_OPERAND_ABSBR:
+            case XED_OPERAND_RELBR:
+                xed_int64_t disp = xed_decoded_inst_get_branch_displacement(xedd);
+                xed_uint64_t target = ((const xed_uint64_t) ip) + inst_len + disp;
+                
+                return target;
+           default:
+                break;
+        }
+
+        if (xed_operand_is_register(op_name)) {
+            xed_reg_enum_t reg = xed_decoded_inst_get_reg(xedd, op_name);
+            
+            // we can figure out the correct address for RIP
+            if (reg == XED_REG_RIP) {
+                return find_jump_target_after_rip(xedd, ip, inst_len);
+            }
+        }
+
+        // TODO: memory operands
+    }
+
+    return 0;
 }
 
 size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size_t len, void *ip, uint64_t* jump_target) {
@@ -71,16 +136,7 @@ size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size
             break;
     }
 
-    xed_category_enum_t category = xed_decoded_inst_get_category(&xedd);
-
-    *jump_target = 0;
-
-    if (category == XED_CATEGORY_COND_BR || category == XED_CATEGORY_UNCOND_BR || category == XED_CATEGORY_CALL) {
-        xed_int64_t disp = xed_decoded_inst_get_branch_displacement(&xedd);
-        xed_uint64_t target = ((const xed_uint64_t) ip) + b_read + disp;
-
-        *jump_target = target;
-    }
+    *jump_target = find_jump_target(&xedd, ip, b_read);
 
     if (!xed_format_context(XED_SYNTAX_INTEL, &xedd, buffer, len, (const xed_uint64_t) ip, 0, 0)) {
         return 0;
@@ -114,7 +170,53 @@ void color_instruction(char* buffer, char* new_buffer) {
     sprintf(new_buffer, BLU "%.*s" CRESET "\t " HGRN "%.*s" CRESET, inst_len, inst, params_len, params);
 }
 
-void print_disassembly(uint8_t *code, size_t n, void* start_addr, sym_table_entry_t *sym_table, size_t sym_table_len) {
+Elf64_Vernaux *walk_versions(Elf64_Verneed *verneed_head, Elf64_Half idx) {
+    // idc, this is how we walk a linked list now
+    while (true) {
+        Elf64_Vernaux *vnas = ((void *) verneed_head) + verneed_head->vn_aux;
+        for (Elf64_Half i = 0; i < verneed_head->vn_cnt; i++) {
+            Elf64_Vernaux vna = vnas[i];
+
+            if (vna.vna_other == idx)
+                return vnas + i;
+        }
+       
+        if (!verneed_head->vn_next)
+           break;
+
+        verneed_head = ((void *) verneed_head) + verneed_head->vn_next;
+    } 
+
+    return 0;
+}
+
+void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *rela, plt_data_t plt_data) {
+    uint64_t dynsym_idx = ELF64_R_SYM(rela->r_info);
+    
+    Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + plt_data.dynsym->sh_offset)) + dynsym_idx;
+
+    char *name = plt_data.dynstr_data + sym->st_name;
+    char *version = 0;
+
+    if (plt_data.gnu_version && plt_data.gnu_version_r) {
+        Elf64_Half *versions = elf_data + plt_data.gnu_version->sh_offset;
+
+        Elf64_Half version_index = versions[dynsym_idx];
+
+        Elf64_Verneed *vns = elf_data + plt_data.gnu_version_r->sh_offset;
+
+        Elf64_Vernaux *vna = walk_versions(vns, version_index);
+
+        version = plt_data.dynstr_data + vna->vna_name;
+    }   
+
+    if (version)
+        sprintf(buffer, "%s@%s", name, version);
+    else
+        sprintf(buffer, "%s", name);
+}
+
+void print_disassembly(void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_entry_t *sym_table, size_t sym_table_len, plt_data_t plt_data) {
     char buffer[256];
     char formatted_buffer[256];
     void *ip = start_addr;
@@ -140,8 +242,8 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, sym_table_entr
 
         if (jump_target) {
             uint64_t target_table_idx = jump_target - (uint64_t) start_addr;
-            sym_table_entry_t target_entry = sym_table[target_table_idx];
-            if (target_table_idx < sym_table_len && target_entry.name != 0) {
+            if (target_table_idx < sym_table_len && sym_table[target_table_idx].name != 0) {
+                sym_table_entry_t target_entry = sym_table[target_table_idx];
                 printf(" <" GRN "%s", target_entry.name);
                 
                 if (target_entry.last_dist != 0) {
@@ -150,22 +252,35 @@ void print_disassembly(uint8_t *code, size_t n, void* start_addr, sym_table_entr
 
                 printf(CRESET ">");
             }
+    
+            // if we're logging a plt table, it's nice to show that a jump is going to a GOT (like objdump -d -j .plt shows)
+            if (plt_data.is_plt) {
+                // 🍝
+                
+                size_t rela_len = plt_data.rela_plt->sh_size / sizeof (Elf64_Rela);
+                for (size_t i = 0; i < rela_len; i++) {
+                    Elf64_Rela *rela = ((Elf64_Rela *) (elf_data + plt_data.rela_plt->sh_offset)) + i;
+                    
+                    if (rela->r_offset != jump_target)
+                        continue;
+                    
+                    char buf[256];
+                    write_full_dynamic_symbol(buf, elf_data, rela, plt_data);
+
+                    printf(" <" HBLU "got" HBLK ":" GRN "%s" CRESET ">", buf);
+                }
+            }
+
+            printf(HBLK "    # 0x%lx", jump_target);
         }
 
-        printf("\n");
+        printf(CRESET "\n");
 
         n -= shift;
         code += shift;
         ip += shift;
     }
 }
-
-typedef struct plt_data_s {
-    bool is_plt;
-    Elf64_Shdr *rela_plt;
-    Elf64_Shdr *dynsym;
-    void *dynstr_data;
-} plt_data_t;
 
 void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, plt_data_t plt_data) {
     uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
@@ -178,7 +293,7 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
     if (!plt_data.is_plt) {
         for (uint64_t i = 1; i < symtab_sz; i++) {
-            Elf64_Sym *sym = ((Elf64_Sym *) (elf_strtab_data + elf_symtab->sh_offset)) + i;
+            Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + elf_symtab->sh_offset)) + i;
 
             // assume executable code is in between (elf_text.sh_addr) and (elf_text.sh_addr + elf_text.sh_size)
             if (sym->st_value < code_begin || sym->st_value >= code_end)
@@ -221,8 +336,7 @@ void print_exec_section(void *elf_data, Elf64_Shdr *section, void *elf_strtab_da
 
     void* code = elf_data + section->sh_offset;
 
-    print_disassembly((uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, section->sh_size);
-
+    print_disassembly(elf_data, (uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, section->sh_size, plt_data);
 }
 
 int main(int argc, char** argv) {
@@ -281,6 +395,9 @@ int main(int argc, char** argv) {
     Elf64_Shdr *elf_rela_plt;
     Elf64_Shdr *elf_dynsym;
     Elf64_Shdr *elf_dynstr;
+    
+    Elf64_Shdr *elf_gnu_version;
+    Elf64_Shdr *elf_gnu_version_r;
 
     Elf64_Shdr *elf_execs[elf_header->e_shnum];
     size_t elf_execs_cnt = 0;
@@ -320,6 +437,16 @@ int main(int argc, char** argv) {
             elf_dynstr = addr;
         }
 
+        if (!strcmp(name, ".gnu.version")) {
+            fprintf(stderr, ".gnu.version found at: %p\n", addr);
+            elf_gnu_version = addr;
+        }
+
+        if (!strcmp(name, ".gnu.version_r")) {
+            fprintf(stderr, ".gnu.version_r found at: %p\n", addr);
+            elf_gnu_version_r = addr;
+        }
+        
         if (shdr.sh_flags & SHF_EXECINSTR) {
             fprintf(stderr, "found exec section '%s' at: %p\n", name, addr);
             elf_execs[elf_execs_cnt++] = addr;
@@ -354,6 +481,9 @@ int main(int argc, char** argv) {
             plt_data.rela_plt = elf_rela_plt;
             plt_data.dynsym = elf_dynsym;
             plt_data.dynstr_data = (elf_data + elf_dynstr->sh_offset);
+
+            plt_data.gnu_version = elf_gnu_version;
+            plt_data.gnu_version_r = elf_gnu_version_r;
         }
 
         print_exec_section(elf_data, shdr, elf_strtab_data, elf_symtab, plt_data);

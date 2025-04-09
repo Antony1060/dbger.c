@@ -490,13 +490,15 @@ int main(int argc, char** argv) {
 
     sym_table_t *plt_sym_table;
 
+    bool is_binary_dynamic_compatible = elf_header->e_type == 3 && elf_rela_plt && elf_dynsym && elf_dynstr;
+
     for (size_t i = 0; i < elf_execs_cnt; i++) {
         Elf64_Shdr *shdr = elf_execs[i];
 
         char* name = elf_shstrtab_data + shdr->sh_name;
 
         plt_data_t plt_data = {0};
-        if (!strcmp(name, ".plt")) {
+        if (!strcmp(name, ".plt") && is_binary_dynamic_compatible) {
             plt_data.is_plt = 1;
             plt_data.rela_plt = elf_rela_plt;
             plt_data.dynsym = elf_dynsym;

@@ -27,6 +27,10 @@
 
 #define MIN_ELF_SIZE 64
 
+static Elf64_Shdr def_symtab = {
+    .sh_type = SHT_SYMTAB,
+};
+
 typedef struct elf_ident_s {
     union {
         uint32_t value;
@@ -478,8 +482,7 @@ int main(int argc, char** argv) {
     }
 
     if (elf_symtab == NULL) {
-        fprintf(stderr, "no symbol table found\n");
-        return 1;
+        elf_symtab = &def_symtab;
     }
 
     if (elf_strtab == NULL) {

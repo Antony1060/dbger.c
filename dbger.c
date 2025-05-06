@@ -16,7 +16,7 @@
 
 #include "ansi.c"
 
-#define PRINT_REGS 0
+#define PRINT_REGS 1
 
 #define errquit(s) do { \
     fprintf(stderr, "ERROR: "s": %s (%s)\n", strerror(errno), strerrorname_np(errno)); \

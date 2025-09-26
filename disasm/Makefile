@@ -1,7 +1,22 @@
-CFLAGS=-ggdb -Wall -Wextra -Werror -lxed
+CFLAGS=-ggdb -fPIC -Wall -Wextra -Werror
 
-main: main.c disasm.c ansi.c
-	$(CC) $(CFLAGS) main.c -o main
+BUILD_DIR=./build
 
-disasm: disasm.c ansi.c
-	$(CC) $(CFLAGS) disasm.c -o disasm
+.PHONY: default
+default: $(BUILD_DIR)/disasm.so #$(BUILD_DIR)/disasm.a
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+$(BUILD_DIR)/disasm.so: $(BUILD_DIR)/disasm.o
+	$(CC) -lxed -shared $(BUILD_DIR)/disasm.o -o $(BUILD_DIR)/libdisasm.so
+
+
+$(BUILD_DIR)/disasm.o: disasm.c disasm.h ansi.h
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c disasm.c -o $(BUILD_DIR)/disasm.o
+
+examples: $(BUILD_DIR)/examples
+
+$(BUILD_DIR)/examples: $(BUILD_DIR)/disasm.so disasm.h
+	$(MAKE) -C examples all

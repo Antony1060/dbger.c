@@ -7,12 +7,8 @@
 #include<elf.h>
 #include<xed/xed-interface.h>
 
-// main
-#include<sys/mman.h>
-#include<sys/stat.h>
-#include<fcntl.h>
-
-#include "ansi.c"
+#include "disasm.h"
+#include "ansi.h"
 
 #define MIN_ELF_SIZE 64
 
@@ -22,35 +18,22 @@ static Elf64_Shdr def_symtab = {
     .sh_type = SHT_SYMTAB,
 };
 
-typedef struct elf_ident_s {
-    union {
-        uint32_t value;
-        uint8_t bytes[4];
-    } ei_magic;
-    uint8_t ei_class;
-    uint8_t ei_data;
-    uint8_t ei_version;
-    uint8_t ei_osabi;
-    uint8_t ei_abiversion;
-    uint8_t ei_pad[7];
-} elf_ident_t;
-
 static char* PLT_STUB_NAME = "__resolver_stub";
 
-typedef struct sym_table_entry_s {
+typedef struct {
     size_t last_dist;
     size_t out_sym_idx;
     // most of the time sym->st_name, but sometimes I need a custom name
     char *name;
 } sym_table_entry_t;
 
-typedef struct sym_table_s {
+typedef struct {
     sym_table_entry_t *items;
     size_t length;
     uint64_t start_addr;
 } sym_table_t;
 
-typedef struct plt_data_s {
+typedef struct {
     bool is_plt;
     Elf64_Shdr *rela_plt;
     Elf64_Shdr *dynsym;
@@ -60,57 +43,8 @@ typedef struct plt_data_s {
     Elf64_Shdr *gnu_version_r;
 } plt_data_t;
 
-typedef struct {
-    // pointer to some location in elf binary
-    char *name;
-    uintptr_t addr;
-} disasm_symbol_t;
-
-typedef struct {
-    uintptr_t resolved_addr;
-
-    disasm_symbol_t *symbol;
-    size_t symbol_offset;
-
-    bool is_plt;
-    bool is_got;
-    
-    char *pretty_target;
-} disasm_branch_meta_t;
-
-typedef struct {
-    uintptr_t addr;
-
-    // pointer to some location in elf binary
-    uint8_t *inst_raw;
-    size_t inst_size;
-
-    char *inst_name;
-    char *inst_args;
-
-    bool is_branch_like;
-    bool has_branch_meta;
-    disasm_branch_meta_t branch_meta;
-} disasm_instruction_t;
-
-typedef struct {
-    disasm_symbol_t *symbols;
-    size_t n_symbols;
-
-    disasm_instruction_t *instructions;
-    size_t n_instructions;
-} disasm_section_t;
-
-typedef struct {
-    elf_ident_t elf_ident;
-    disasm_section_t *sections;
-    size_t n_sections;
-
-    sym_table_t* __plt_table;
-} disasm_ctx_t;
-
 static bool validate_elf_header(Elf64_Ehdr *header) {
-    elf_ident_t elf_ident = *((elf_ident_t *)header);
+    disasm_elf_ident_t elf_ident = *((disasm_elf_ident_t *)header);
     
     if (elf_ident.ei_magic.value != 0x464c457f)
         return false;
@@ -267,7 +201,7 @@ static void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *
         sprintf(buffer, "%s", name);
 }
 
-static int code_disassemble(disasm_ctx_t* ctx, disasm_section_t* section, void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_t *sym_table, plt_data_t plt_data) {
+static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_t *sym_table, sym_table_t *plt_table, plt_data_t plt_data) {
     // TODO
     char buffer[256];
     void *ip = start_addr;
@@ -300,6 +234,7 @@ static int code_disassemble(disasm_ctx_t* ctx, disasm_section_t* section, void *
         if (jump_target) {
             disasm_branch_meta_t* branch = &inst->branch_meta;
             branch->pretty_target = malloc(256);
+            branch->pretty_target[0] = '\0';
             uint64_t target_table_idx = jump_target - sym_table->start_addr;
             if (target_table_idx < sym_table->length && sym_table->items[target_table_idx].name != 0) {
                 sym_table_entry_t target_entry = sym_table->items[target_table_idx];
@@ -313,10 +248,10 @@ static int code_disassemble(disasm_ctx_t* ctx, disasm_section_t* section, void *
                 
                 branch->symbol = &section->symbols[target_entry.out_sym_idx];
                 branch->symbol_offset = target_entry.last_dist;
-            } else if (ctx->__plt_table) {
-                target_table_idx = jump_target - ctx->__plt_table->start_addr;
-                if (target_table_idx < ctx->__plt_table->length && ctx->__plt_table->items[target_table_idx].name != 0) {
-                    sym_table_entry_t target_entry = ctx->__plt_table->items[target_table_idx];
+            } else if (plt_table) {
+                target_table_idx = jump_target - plt_table->start_addr;
+                if (target_table_idx < plt_table->length && plt_table->items[target_table_idx].name != 0) {
+                    sym_table_entry_t target_entry = plt_table->items[target_table_idx];
                     int w = sprintf(branch->pretty_target, "<" HBLU "plt" HBLK ":" GRN "%s", target_entry.name);
                 
                     if (target_entry.last_dist != 0) {
@@ -367,12 +302,15 @@ static int code_disassemble(disasm_ctx_t* ctx, disasm_section_t* section, void *
     return 0;
 }
 
-static int handle_exec_section(disasm_ctx_t* ctx, disasm_section_t* out_section, void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, plt_data_t plt_data, sym_table_t *sym_table) {
+static int handle_exec_section(disasm_section_t* out_section, void *elf_data, Elf64_Shdr *section, void *elf_strtab_data, Elf64_Shdr *elf_symtab, sym_table_t *plt_table, plt_data_t plt_data, sym_table_t *sym_table) {
     uint64_t symtab_sz = (elf_symtab->sh_size) / sizeof(Elf64_Sym);
     uint64_t code_begin = section->sh_addr;
     uint64_t code_end = code_begin + section->sh_size;
 
     sym_table->start_addr = code_begin;
+
+    out_section->code_start = code_begin;
+    out_section->size = code_end - code_begin;
 
     // fill symbol table
     memset(sym_table->items, 0, sym_table->length * sizeof(*sym_table->items));
@@ -424,7 +362,7 @@ static int handle_exec_section(disasm_ctx_t* ctx, disasm_section_t* out_section,
             curr->out_sym_idx = out_section->n_symbols;
             out_section->symbols[out_section->n_symbols++] = (disasm_symbol_t) {
                 .name = curr->name, 
-                .addr = i
+                .addr = code_begin + i
             };
             last = *curr;
             continue;
@@ -436,7 +374,7 @@ static int handle_exec_section(disasm_ctx_t* ctx, disasm_section_t* out_section,
 
     void* code = elf_data + section->sh_offset;
 
-    if (code_disassemble(ctx, out_section, elf_data, (uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, plt_data) < 0)
+    if (code_disassemble(out_section, elf_data, (uint8_t *) code, section->sh_size, (void *) code_begin, sym_table, plt_table, plt_data) < 0)
         return -1;
 
     return 0;
@@ -445,6 +383,7 @@ static int handle_exec_section(disasm_ctx_t* ctx, disasm_section_t* out_section,
 // TODO: better error handling, currently anything < 0 is an error
 // the parser will (unsafely) start assuming the elf is valid and try parsing whatever bytes after *elf_data
 //  the returned context will also reference memory from elf_data, so it must exist as long as the output is used (TODO?)
+__attribute__((used))
 int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     static bool xed_init = 0;
     if (!xed_init) {
@@ -539,10 +478,10 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     *out = malloc(sizeof(**out));
     
     disasm_ctx_t* ctx = *out;
-    ctx->elf_ident = *((elf_ident_t *) elf_header);
+    ctx->elf_ident = *((disasm_elf_ident_t *) elf_header);
     ctx->sections = malloc(sizeof(*ctx->sections) * elf_execs_cnt);
     ctx->n_sections = elf_execs_cnt;
-    ctx->__plt_table = NULL;
+    sym_table_t *plt_table = NULL;
 
     void *elf_strtab_data = (elf_data + elf_strtab->sh_offset);
 
@@ -569,25 +508,31 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
         sym_table->length = shdr->sh_size;
 
         ctx->sections[i] = (disasm_section_t) {0};
+        ctx->sections[i].name = name;
 
-        if (handle_exec_section(ctx, &ctx->sections[i], elf_data, shdr, elf_strtab_data, elf_symtab, plt_data, sym_table) < 0) {
+        if (handle_exec_section(&ctx->sections[i], elf_data, shdr, elf_strtab_data, elf_symtab, plt_table, plt_data, sym_table) < 0) {
             free(sym_table->items);
             free(sym_table);
             return -1;
         }
 
         if (plt_data.is_plt) {
-            ctx->__plt_table = sym_table;
+            plt_table = sym_table;
         } else {
             free(sym_table->items);
             free(sym_table);
         }
     }
 
+    if (plt_table) {
+        free(plt_table->items);
+        free(plt_table);
+    }
+
     return 0;
 }
 
-static void free_instruction(disasm_instruction_t *inst) {
+void free_instruction(disasm_instruction_t *inst) {
     free(inst->inst_name);
     free(inst->inst_args);
     
@@ -596,7 +541,7 @@ static void free_instruction(disasm_instruction_t *inst) {
     }
 }
 
-static void free_section(disasm_section_t *section) {
+void free_section(disasm_section_t *section) {
     free(section->symbols);
 
     for (size_t i = 0; i < section->n_instructions; i++)
@@ -605,51 +550,12 @@ static void free_section(disasm_section_t *section) {
     free(section->instructions);
 }
 
+__attribute__((used))
 void disasm_free(disasm_ctx_t *ctx) {
     for (size_t i = 0; i < ctx->n_sections; i++)
         free_section(&ctx->sections[i]);
-
-    if (ctx->__plt_table) {
-        free(ctx->__plt_table->items);
-        free(ctx->__plt_table);
-    }
 
     free(ctx->sections);
     free(ctx);
 }
 
-int main(int argc, char** argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <elf...>\n", argv[0]);
-        return 1;
-    }
-
-    int fd;
-    if ((fd = open(argv[1], O_RDONLY)) < 0)
-        return 1;
-
-    struct stat fd_stat;
-    if (fstat(fd, &fd_stat) < 0)
-        return 1;
-
-    off_t file_size = fd_stat.st_size;
-
-    if (file_size < MIN_ELF_SIZE) {
-        fprintf(stderr, "file is smaller than %d bytes\n", MIN_ELF_SIZE);
-        return 1;
-    }
-
-    void *elf_data = mmap(0, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-
-    if (elf_data == MAP_FAILED)
-        return 1;
-
-    disasm_ctx_t *disasm;
-    int res = disasm_from_elf(&disasm, elf_data);
-
-    printf("%d %p\n", res, disasm);
-
-    munmap(elf_data, file_size);
-
-    return 0;
-}

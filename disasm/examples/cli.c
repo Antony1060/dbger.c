@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     disasm_ctx_t *ctx;
 
     if (disasm_from_elf(&ctx, elf_data) < 0) {
-        fprintf(stderr, "Failed to disassemble");
+        fprintf(stderr, "Failed to disassemble\n");
         return 1;
     }
 

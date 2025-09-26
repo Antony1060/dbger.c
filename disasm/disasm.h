@@ -1,7 +1,8 @@
 #ifndef __DISASM_H
 #define __DISASM_H
 
-#include<stdint.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     union {
@@ -30,7 +31,7 @@ typedef struct {
 
     bool is_plt;
     bool is_got;
-    
+
     char *pretty_target;
 } disasm_branch_meta_t;
 
@@ -69,13 +70,12 @@ typedef struct {
     size_t n_sections;
 } disasm_ctx_t;
 
-int disasm_from_elf(disasm_ctx_t** out, void *elf_data);
+int disasm_from_elf(disasm_ctx_t **out, void *elf_data);
 
-void free_instruction(disasm_instruction_t *inst); 
+void free_instruction(disasm_instruction_t *inst);
 
 void free_section(disasm_section_t *section);
 
 void disasm_free(disasm_ctx_t *ctx);
 
 #endif // __DISASM_H
-

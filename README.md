@@ -1,18 +1,21 @@
-## dbger 
-A very basic implementation of an x86 debugger, not meant to be actaully used. Still work in progress.
+# dbger.c
+This is a toy project because I wanted to learn how debuggers and disassembler work.
+
+## dbger.c
+The debugger is in a very raw state right now, only intended for x86_64, not meant to be actaully used. Still work in progress.
+
+## disasm.c
+More info in [disasm dir](./disasm/).
 
 ## Build
-```sh
-# disassembler
-cc -Wall -Wextra -Werror -lxed disasm.c -o disasm
+Probably outdated
 
+```sh
 # debugger
 cc -Wall -Wextra -Werror -lxed dbger.c -o dbger
 ```
 
 ## Run
 ```sh
-./disasm <elf...>
-
 ./dbger <command...>
 ```

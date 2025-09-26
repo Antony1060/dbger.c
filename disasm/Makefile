@@ -3,17 +3,17 @@ CFLAGS=-ggdb -fPIC -Wall -Wextra -Werror
 BUILD_DIR=./build
 
 .PHONY: default
-default: $(BUILD_DIR)/disasm.so $(BUILD_DIR)/disasm.a
+default: all
 
 clean:
 	rm -rf $(BUILD_DIR)
 
-all: $(BUILD_DIR)/disasm.so $(BUILD_DIR)/disasm.a
+all: $(BUILD_DIR)/libdisasm.so $(BUILD_DIR)/libdisasm.a
 
-$(BUILD_DIR)/disasm.so: $(BUILD_DIR)/disasm.o
+$(BUILD_DIR)/libdisasm.so: $(BUILD_DIR)/disasm.o
 	$(CC) -lxed -shared $(BUILD_DIR)/disasm.o -o $(BUILD_DIR)/libdisasm.so
 
-$(BUILD_DIR)/disasm.a: $(BUILD_DIR)/disasm.o
+$(BUILD_DIR)/libdisasm.a: $(BUILD_DIR)/disasm.o
 	ar rcs $(BUILD_DIR)/libdisasm.a $(BUILD_DIR)/disasm.o
 
 $(BUILD_DIR)/disasm.o: disasm.c disasm.h ansi.h

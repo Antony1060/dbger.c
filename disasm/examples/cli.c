@@ -108,6 +108,8 @@ int main(int argc, char** argv) {
 
     print_disassembly(ctx);
 
+    disasm_free(ctx);
+
     munmap(elf_data, file_size);
 
     return 0;

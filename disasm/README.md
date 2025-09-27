@@ -2,6 +2,9 @@
 A quite basic x86_64 disassembler library intended for use in the debugger that I'm making.
 
 ### Building
+#### Required dependencies
+- [Intel XED](https://github.com/intelxed/xed)
+
 ```sh
 make clean && make
 ```

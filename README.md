@@ -9,13 +9,3 @@ More info in [disasm dir](./disasm/).
 
 ## Build
 Probably outdated
-
-```sh
-# debugger
-cc -Wall -Wextra -Werror -lxed dbger.c -o dbger
-```
-
-## Run
-```sh
-./dbger <command...>
-```

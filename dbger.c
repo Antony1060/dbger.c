@@ -15,6 +15,7 @@
 #include<xed/xed-interface.h>
 
 #include "ansi.c"
+#include "maps.c"
 
 #define PRINT_REGS 1
 
@@ -103,6 +104,8 @@ int main(int argc, char** argv) {
     if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL | PTRACE_O_TRACEEXEC) < 0)
         errquit("ptrace(PTRACE_ATTACH)");
 
+    proc_map *maps = NULL;
+    int maps_size = 0;
 
     int wstatus;
     while (1) {
@@ -123,11 +126,26 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (!maps) {
+            if ((maps_size = proc_map_from_pid(&maps, pid)) < 0) {
+                fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
+                return 1;
+            }
+
+            for (int i = 0; i < maps_size; i++) {
+                proc_map map = maps[i];
+
+                printf("%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
+            }
+        }
+
         if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
             errquit("ptrace(PTRACE_SINGLESTEP)");
 
         getchar();
     }
+
+    free_proc_maps(maps, maps_size);
 
     return 0;
 }

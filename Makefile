@@ -1,3 +1,3 @@
 .PHONY = default
 default:
-	gcc -Wall -Wextra -Werror -lxed dbger.c -o dbger
+	gcc -ggdb -Wall -Wextra -Werror -lxed dbger.c -o dbger

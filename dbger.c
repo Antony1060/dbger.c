@@ -77,6 +77,7 @@ void print_regs(pid_t pid) {
         printreg(rdi);
         printreg(rip);
         printreg(rsp);
+        printreg(rbp);
         fprintf(stderr, "\n");
     }
 }
@@ -102,6 +103,7 @@ int main(int argc, char** argv) {
     if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL | PTRACE_O_TRACEEXEC) < 0)
         errquit("ptrace(PTRACE_ATTACH)");
 
+
     int wstatus;
     while (1) {
         if (waitpid(pid, &wstatus, WCONTINUED) < 0)
@@ -123,6 +125,8 @@ int main(int argc, char** argv) {
 
         if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
             errquit("ptrace(PTRACE_SINGLESTEP)");
+
+        getchar();
     }
 
     return 0;

@@ -8,5 +8,5 @@ all: $(BUILD_DIR)/cli
 
 $(BUILD_DIR)/cli: cli.c
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -L$(LIB_DIR) -I$(INCLUDES_DIR) -lxed -o $(BUILD_DIR)/cli cli.c -l:libdisasm.a
+	$(CC) $(CFLAGS) -L$(LIB_DIR) -I$(INCLUDES_DIR) -o $(BUILD_DIR)/cli cli.c -lxed -l:libdisasm.a
 

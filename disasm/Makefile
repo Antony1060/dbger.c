@@ -11,7 +11,7 @@ clean:
 all: $(BUILD_DIR)/libdisasm.so $(BUILD_DIR)/libdisasm.a
 
 $(BUILD_DIR)/libdisasm.so: $(BUILD_DIR)/disasm.o
-	$(CC) -lxed -shared $(BUILD_DIR)/disasm.o -o $(BUILD_DIR)/libdisasm.so
+	$(CC) -shared -lxed $(BUILD_DIR)/disasm.o -o $(BUILD_DIR)/libdisasm.so
 
 $(BUILD_DIR)/libdisasm.a: $(BUILD_DIR)/disasm.o
 	ar rcs $(BUILD_DIR)/libdisasm.a $(BUILD_DIR)/disasm.o

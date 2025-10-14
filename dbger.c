@@ -19,6 +19,8 @@
 
 #define PRINT_REGS 1
 
+#define INT3 0xCC
+
 #define errquit(s) do { \
     fprintf(stderr, "ERROR: "s": %s (%s)\n", strerror(errno), strerrorname_np(errno)); \
     exit(1); \
@@ -137,7 +139,14 @@ int main(int argc, char** argv) {
 
                 printf("%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
             }
+
+            if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+                errquit("ptrace(PTRACE_CONT)");
+
+            continue;
         }
+
+        // if int3, replace with original, move rip one back
 
         if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
             errquit("ptrace(PTRACE_SINGLESTEP)");

@@ -85,6 +85,7 @@ void print_regs(pid_t pid) {
         printreg(rip);
         printreg(rsp);
         printreg(rbp);
+        printreg(rip);
         fprintf(stderr, "\n");
     }
 }
@@ -138,6 +139,9 @@ int main(int argc, char** argv) {
 
         if (WIFSTOPPED(wstatus) && (wstatus >> 8 == (SIGTRAP | PTRACE_EVENT_EXEC << 8)))
             break;
+
+        if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+            errquit("ptrace(PTRACE_CONT)");
     }
 
     // don't care about exec anymore
@@ -154,7 +158,7 @@ int main(int argc, char** argv) {
     int maps_size = 0;
 
     struct {
-        uint8_t byte;
+        uint64_t word;
         uint64_t addr;
     } break_meta = {0};
 
@@ -185,25 +189,15 @@ int main(int argc, char** argv) {
             errquit("ptrace(PTRACE_SINGLESTEP)");
     } else {
         fprintf(stderr, "start section found (%lx-%lx)\n", guess_exec.start, guess_exec.end);
-        uint8_t byte;
-        struct iovec local = { &byte, 1 };
-        struct iovec remote = { (void *) guess_exec.start, 1 };
-
         // read instruction byte at beginning
-        if (process_vm_readv(pid, &local, 1, &remote, 1, 0) < 1)
-            errquit("process_vm_readv(pid, ...)");
+        uint64_t word = ptrace(PTRACE_PEEKDATA, pid, guess_exec.start, 0);
 
-        fprintf(stderr, "%x\n", byte);
-
-        break_meta.byte = byte;
+        break_meta.word = word;
         break_meta.addr = guess_exec.start;
 
-        uint8_t a = 0xcc;
-        local = (struct iovec) { &a, 1 };
-        remote = (struct iovec) { (void *) guess_exec.start, 1 };
         // write an INT3 interrupt at that address
-        if (process_vm_writev(pid, &local, 1, &remote, 1, 0) < 1)
-            errquit("process_vm_writev(pid, ...)");
+        if (ptrace(PTRACE_POKEDATA, pid, guess_exec.start, INT3) < 0)
+            errquit("ptrace(PTRACE_POKEDATA)");
 
         if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
             errquit("ptrace(PTRACE_CONT)");
@@ -234,17 +228,17 @@ int main(int argc, char** argv) {
             errquit("ptrace(PTRACE_GETREGS)");
 
         // if int3, replace with original, move rip one back
-        if (break_meta.byte && signal == SIGTRAP) {
+        if (break_meta.word && break_meta.addr && signal == SIGTRAP) {
             // wtite old instruction byte
-            struct iovec local = { &break_meta.byte, 1 };
-            struct iovec remote = { (void *) break_meta.addr, 1 };
-            if (process_vm_writev(pid, &local, 1, &remote, 1, 0) < 1)
-                errquit("process_vm_writev(pid, ...)");
+            if (ptrace(PTRACE_POKEDATA, pid, break_meta.addr, break_meta.word) < 0)
+                errquit("ptrace(PTRACE_POKEDATA)");
 
             // move rip back by one
             regs.rip--;
             if (ptrace(PTRACE_SETREGS, pid, 0, &regs) < 0)
                 errquit("ptrace(PTRACE_SETREGS)");
+
+            break_meta.word = 0, break_meta.addr = 0;
         }
 
         print_regs(pid);

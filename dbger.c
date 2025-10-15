@@ -106,16 +106,49 @@ int main(int argc, char** argv) {
 
     pid_t pid = fork();
     if (pid == 0) {
+        if (ptrace(PTRACE_TRACEME, 0, 0, 0) < 0)
+            errquit("ptrace(PTRACE_TRACEME)");
+
+        if (raise(SIGSTOP) != 0) {
+            fprintf(stderr, "raise failed\n");
+            return 1;
+        }
+
         if (execvp(argv[1], argv + 1) < 0)
             errquit("Failed to start process");
 
         return 0;
     }
 
-    fprintf(stderr, "Tracing: %d\n", pid);
+    // wait for SIGSTOP
+    if (waitpid(pid, NULL, 0) < 0)
+        errquit("Failed to wait for process");
 
-    if (ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_EXITKILL | PTRACE_O_TRACEEXEC) < 0)
-        errquit("ptrace(PTRACE_ATTACH)");
+    if (ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL | PTRACE_O_TRACEEXEC) < 0)
+        errquit("ptrace(PTRACE_SETOPTIONS)");
+
+    // continue until execve
+    if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+        errquit("ptrace(PTRACE_CONT)");
+
+    int wstatus;
+    while (1) {
+        if (waitpid(pid, &wstatus, 0) < 0)
+            errquit("Failed to wait for process");
+
+        if (WIFSTOPPED(wstatus) && (wstatus >> 8 == (SIGTRAP | PTRACE_EVENT_EXEC << 8)))
+            break;
+    }
+
+    // don't care about exec anymore
+    if (ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_EXITKILL) < 0)
+        errquit("ptrace(PTRACE_SETOPTIONS)");
+
+    char target_pathname[128];
+    if (get_pid_pathname(pid, target_pathname, 128) < 0)
+        errquit("get_pid_pathname(pid, ...)");
+
+    fprintf(stderr, "Tracing: %d (%s)\n", pid, target_pathname);
 
     proc_map *maps = NULL;
     int maps_size = 0;
@@ -124,14 +157,58 @@ int main(int argc, char** argv) {
         uint8_t byte;
         uint64_t addr;
     } break_meta = {0};
+
     struct {
         uint64_t start;
         uint64_t end;
     } guess_exec = {0};
     
-    char target_pathname[128];
-    
-    int wstatus;
+    if ((maps_size = proc_map_from_pid(&maps, pid)) < 0) {
+        fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
+        return 1;
+    }
+
+    for (int i = 0; i < maps_size; i++) {
+        proc_map map = maps[i];
+
+        printf("%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
+        if (map.perms & MAP_PERM_EXEC && !strncmp(target_pathname, map.pathname, min(strlen(map.pathname), strlen(target_pathname)))) {
+            guess_exec.start = map.addr_start;
+            guess_exec.end = map.addr_end;
+        }
+    }
+
+    if (!guess_exec.start) {
+        fprintf(stderr, "failed to find start section\n");
+
+        if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
+            errquit("ptrace(PTRACE_SINGLESTEP)");
+    } else {
+        fprintf(stderr, "start section found (%lx-%lx)\n", guess_exec.start, guess_exec.end);
+        uint8_t byte;
+        struct iovec local = { &byte, 1 };
+        struct iovec remote = { (void *) guess_exec.start, 1 };
+
+        // read instruction byte at beginning
+        if (process_vm_readv(pid, &local, 1, &remote, 1, 0) < 1)
+            errquit("process_vm_readv(pid, ...)");
+
+        fprintf(stderr, "%x\n", byte);
+
+        break_meta.byte = byte;
+        break_meta.addr = guess_exec.start;
+
+        uint8_t a = 0xcc;
+        local = (struct iovec) { &a, 1 };
+        remote = (struct iovec) { (void *) guess_exec.start, 1 };
+        // write an INT3 interrupt at that address
+        if (process_vm_writev(pid, &local, 1, &remote, 1, 0) < 1)
+            errquit("process_vm_writev(pid, ...)");
+
+        if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+            errquit("ptrace(PTRACE_CONT)");
+    }
+
     while (1) {
         if (waitpid(pid, &wstatus, WCONTINUED) < 0)
             errquit("Failed to wait for process");
@@ -149,63 +226,6 @@ int main(int argc, char** argv) {
         int signal = WSTOPSIG(wstatus);
         if (signal != SIGTRAP) {
             fprintf(stderr, "Signal: %d (SIG%s)\n", signal, sigabbrev_np(signal));
-        }
-
-        if (!target_pathname[0]) {
-            if (get_pid_pathname(pid, target_pathname, 128) < 0)
-                errquit("get_pid_pathname(pid, ...)");
-
-            fprintf(stderr, "Tracing: %s\n", target_pathname);
-        }
-
-        if (!maps) {
-            if ((maps_size = proc_map_from_pid(&maps, pid)) < 0) {
-                fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
-                return 1;
-            }
-
-            for (int i = 0; i < maps_size; i++) {
-                proc_map map = maps[i];
-
-                printf("%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
-                if (map.perms & MAP_PERM_EXEC && !strncmp(target_pathname, map.pathname, min(strlen(map.pathname), strlen(target_pathname)))) {
-                    guess_exec.start = map.addr_start;
-                    guess_exec.end = map.addr_end;
-                }
-            }
-
-            if (!guess_exec.start) {
-                fprintf(stderr, "failed to find start section\n");
-                
-                if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
-                    errquit("ptrace(PTRACE_SINGLESTEP)");
-            } else {
-                fprintf(stderr, "start section found (%lx-%lx)\n", guess_exec.start, guess_exec.end);
-                uint8_t byte;
-                struct iovec local = { &byte, 1 };
-                struct iovec remote = { (void *) guess_exec.start, 1 };
-
-                // read instruction byte at beginning
-                if (process_vm_readv(pid, &local, 1, &remote, 1, 0) < 1)
-                    errquit("process_vm_readv(pid, ...)");
-
-                fprintf(stderr, "%x\n", byte);
-
-                break_meta.byte = byte;
-                break_meta.addr = guess_exec.start;
-              
-                uint8_t a = 0xcc;
-                local = (struct iovec) { &a, 1 };
-                remote = (struct iovec) { (void *) guess_exec.start, 1 };
-                // write an INT3 interrupt at that address
-                if (process_vm_writev(pid, &local, 1, &remote, 1, 0) < 1)
-                    errquit("process_vm_writev(pid, ...)");
-
-                if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
-                    errquit("ptrace(PTRACE_CONT)");
-            }
-
-            continue;
         }
 
         struct user_regs_struct regs;

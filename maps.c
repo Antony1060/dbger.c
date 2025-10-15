@@ -9,7 +9,7 @@
 enum {
     MAP_PERM_READ = 1 << 0,
     MAP_PERM_WRITE = 1 << 1,
-    MAP_PERM_EXECUTE = 1 << 2,
+    MAP_PERM_EXEC = 1 << 2,
     MAP_PERM_SHARED = 1 << 3,
     MAP_PERM_PRIVATE = 1 << 4
 };
@@ -72,7 +72,7 @@ int proc_map_from_pid(proc_map **out_maps, int pid) {
                     map.perms |= MAP_PERM_WRITE;
                     break;
                 case 'x':
-                    map.perms |= MAP_PERM_EXECUTE;
+                    map.perms |= MAP_PERM_EXEC;
                     break;
                 case 's':
                     map.perms |= MAP_PERM_SHARED;

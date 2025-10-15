@@ -41,7 +41,7 @@ void print_section(disasm_section_t *section) {
             printf("\n" HCYN "%s" HBLK ":" CRESET "\n", symbol_name_map[inst->addr - section->code_start]);
         }
 
-        printf("\t" HYEL "%p" HBLK ":\t" BLU "%s" CRESET "\t " HGRN "%s" CRESET, (void *) inst->addr, inst->inst_name, inst->inst_args);
+        printf("\t" HYEL "%p (0x%x)" HBLK ":\t" BLU "%s" CRESET "\t " HGRN "%s" CRESET, (void *) inst->addr, inst->inst_raw[0], inst->inst_name, inst->inst_args);
 
         if (inst->has_branch_meta) {
             disasm_branch_meta_t *branch = &inst->branch_meta;

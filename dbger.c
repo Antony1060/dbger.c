@@ -3,6 +3,9 @@
 #include<sys/wait.h>
 #include<sys/ptrace.h>
 #include<sys/user.h>
+#include<fcntl.h>
+#include<sys/stat.h>
+#include<sys/mman.h>
 
 #include <disasm/disasm.h>
 
@@ -22,6 +25,33 @@ int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
     snprintf(file_name, 64, "/proc/%d/exe", pid);
 
     return readlink(file_name, pathname, n);
+}
+
+// TODO: better error handling
+int open_and_disasm(disasm_ctx_t **_ctx, void **_elf_data, size_t *stat_size, const char *target_pathname) {
+    int target_fd;
+    if ((target_fd = open(target_pathname, O_RDONLY)) < 0)
+        return -1;
+
+    struct stat target_fd_stat;
+    if (fstat(target_fd, &target_fd_stat) < 0)
+        return -1;
+
+    void *elf_data = mmap(0, target_fd_stat.st_size, PROT_READ, MAP_PRIVATE, target_fd, 0);
+    if (elf_data == MAP_FAILED)
+        return -1;
+
+    disasm_ctx_t *ctx;
+    if (disasm_from_elf(&ctx, elf_data) < 0) {
+        fprintf(stderr, "Failed to disassemble\n");
+        return -1;
+    }
+
+    *_ctx = ctx;
+    *_elf_data = elf_data;
+    *stat_size = target_fd_stat.st_size;
+
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -63,8 +93,22 @@ int main(int argc, char **argv) {
         }
     }
 
+    // load and disassemble the binary
+    void *elf_data;
+    disasm_ctx_t *d_ctx;
+    size_t target_file_size;
+    if (open_and_disasm(&d_ctx, &elf_data, &target_file_size, target_pathname) < 0) {
+        fprintf(stderr, "ERROR: failed to disassemble");
+        return 1;
+    }
+
+    printf("disasm_ctx_t: %p\n", d_ctx);
+
+    // last breakpoint set
     break_meta last_break = {0};
 
+    // if the executable section was found, set a breakpoint and continue
+    //  otherwise single step
     if (!guess_exec.addr_start) {
         fprintf(stderr, "failed to find start section\n");
 
@@ -126,6 +170,10 @@ int main(int argc, char **argv) {
     }
 
     free_proc_maps(maps, maps_size);
+
+    disasm_free(d_ctx);
+
+    munmap(elf_data, target_file_size);
 
     return 0;
 }

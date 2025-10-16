@@ -1,3 +1,5 @@
+#ifndef __DBGER_ANSI
+#define __DBGER_ANSI
 // https://gist.github.com/RabaDabaDoba/145049536f815903c79944599c6f952a
 
 /*
@@ -81,3 +83,4 @@
 #define CRESET "\e[0m"
 #define COLOR_RESET "\e[0m"
 
+#endif // __DBGER_ANSI

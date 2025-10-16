@@ -1,19 +1,25 @@
-CFLAGS=-ggdb -Wall -Wextra -Werror
+CFLAGS=-ggdb -Wall -Wextra -Werror -D_GNU_SOURCE
 
 BUILD_DIR=./build
 
 DISASM_DIR=./disasm
 DISASM_LIB_DIR=$(DISASM_DIR)/build
-DISASM_INCLUDES_DIR=$(DISASM_DIR)
+
+SRC=$(wildcard *.c)
+OBJ=$(SRC:%.c=$(BUILD_DIR)/%.o)
+TARGET=./dbger
 
 .PHONY: default
 default: all
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(TARGET)
 
-all: $(BUILD_DIR)/dbger
+all: $(TARGET)
 
-$(BUILD_DIR)/dbger: dbger.c ansi.c maps.c $(DISASM_DIR)/build/libdisasm.a $(DISASM_DIR)/disasm.h
+$(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -I$(DISASM_INCLUDES_DIR) -L$(DISASM_LIB_DIR) dbger.c -l:libdisasm.a -lxed -o $(BUILD_DIR)/dbger
+	$(CC) $(CFLAGS) -I. -c $< -o $@
+
+$(TARGET): $(OBJ) $(DISASM_DIR)/build/libdisasm.a $(DISASM_DIR)/disasm.h
+	$(CC) -L$(DISASM_LIB_DIR) $(OBJ) -l:libdisasm.a -lxed -o $(TARGET)

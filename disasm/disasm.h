@@ -45,6 +45,9 @@ typedef struct {
     char *inst_name;
     char *inst_args;
 
+    disasm_symbol_t *closest_symbol;
+    size_t closest_symbol_offset;
+
     bool is_branch_like;
     bool has_branch_meta;
     disasm_branch_meta_t branch_meta;

@@ -202,7 +202,6 @@ static void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *
 }
 
 static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_t *sym_table, sym_table_t *plt_table, plt_data_t plt_data) {
-    // TODO
     char buffer[256];
     void *ip = start_addr;
    
@@ -217,12 +216,19 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
             return -1;
         }
 
+        sym_table_entry_t *inst_sym = NULL;
+        uint64_t inst_table_idx = (uint64_t) ip - sym_table->start_addr;
+        if (inst_table_idx < sym_table->length && sym_table->items[inst_table_idx].name != 0)
+            inst_sym = &sym_table->items[inst_table_idx];
+
         section->instructions[section->n_instructions] = (disasm_instruction_t) {
             .addr = (uintptr_t) ip,
             .inst_raw = code,
             .inst_size = shift,
             .inst_name = malloc(32),
             .inst_args = malloc(256),
+            .closest_symbol = inst_sym ? &section->symbols[inst_sym->out_sym_idx] : NULL,
+            .closest_symbol_offset = inst_sym ? inst_sym->last_dist : 0,
             .is_branch_like = category == XED_CATEGORY_COND_BR || category == XED_CATEGORY_UNCOND_BR || category == XED_CATEGORY_CALL,
             .has_branch_meta = jump_target != 0,
             .branch_meta = {0}
@@ -245,7 +251,7 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
                 }
 
                 sprintf(branch->pretty_target + w, CRESET ">");
-                
+
                 branch->symbol = &section->symbols[target_entry.out_sym_idx];
                 branch->symbol_offset = target_entry.last_dist;
             } else if (plt_table) {

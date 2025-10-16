@@ -43,7 +43,13 @@ void print_section(disasm_section_t *section) {
             printf("\n" HCYN "%s" HBLK ":" CRESET "\n", symbol_name_map[inst->addr - section->code_start]);
         }
 
-        printf("\t" HYEL "%p" HBLK ":\t" BLU "%s" CRESET "\t " HGRN "%s" CRESET, (void *) inst->addr, inst->inst_name, inst->inst_args);
+        printf("\t" HYEL "%p", (void *) inst->addr);
+
+        if (inst->closest_symbol) {
+            printf(WHT " <" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol_offset);
+        }
+
+        printf(HBLK ":\t" BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->inst_name, inst->inst_args);
 
         if (inst->has_branch_meta) {
             disasm_branch_meta_t *branch = &inst->branch_meta;

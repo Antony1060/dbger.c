@@ -39,7 +39,7 @@ static void print_instruction(pid_t pid, unsigned long long rip) {
     }
 
     if (i >= b_read) {
-        fprintf(stderr, "\t" HRED "error (unrecognized instruction)" CRESET "\n");
+        printf("\t" HRED "error (unrecognized instruction)" CRESET "\n");
         return;
     }
 
@@ -49,20 +49,15 @@ static void print_instruction(pid_t pid, unsigned long long rip) {
         exit(1);
     }
 
-    fprintf(stderr, "" HBLU "%s" CRESET "\n", buf);
+    printf("" HBLU "%s" CRESET "\n", buf);
 }
 
-void print_state(pid_t pid) {
-    struct user_regs_struct regs;
+void print_state(pid_t pid, struct user_regs_struct *regs) {
+    printf(HYEL "0x%llx" HBLK ": " CRESET, regs->rip);
 
-    if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0)
-        errquit("ptrace(PTRACE_GETREGS)");
+    print_instruction(pid, regs->rip);
 
-    fprintf(stderr, HYEL "0x%llx" HBLK ": " CRESET, regs.rip);
-
-    #define printreg(reg) fprintf(stderr, "\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", regs.reg, regs.reg);
-
-    print_instruction(pid, regs.rip);
+    #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", regs->reg, regs->reg);
 
     if (PRINT_REGS) {
         printreg(rax);
@@ -74,6 +69,6 @@ void print_state(pid_t pid) {
         printreg(rsp);
         printreg(rbp);
         printreg(rip);
-        fprintf(stderr, "\n");
+        printf("\n");
     }
 }

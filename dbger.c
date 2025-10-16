@@ -2,6 +2,7 @@
 #include<stdlib.h>
 #include<sys/wait.h>
 #include<sys/ptrace.h>
+#include<sys/user.h>
 
 #include <disasm/disasm.h>
 
@@ -49,7 +50,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // gues the first executable part of the binary,
+    // guess the first executable part of the binary,
     //  the idea is to skip the glibc runtime that the process starts in
     proc_map guess_exec = {0};
 
@@ -105,7 +106,18 @@ int main(int argc, char **argv) {
                 errquit("end_breakpoint(..)");
         }
 
-        print_state(pid);
+        struct user_regs_struct regs;
+        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0)
+            errquit("ptrace(PTRACE_GETREGS)");
+
+        // TODO: move to print_state
+        // TODO: include all other sections of the program that might be executable
+        // TODO: show which map it's executing from
+        if (regs.rip < guess_exec.addr_start || regs.rip > guess_exec.addr_end) {
+            printf("Not in binary\n");
+        }
+
+        print_state(pid, &regs);
 
         getchar();
 

@@ -19,7 +19,7 @@ typedef struct {
     char *pathname;
 } proc_map;
 
-int proc_map_from_pid(proc_map **out_maps, int pid);
+int proc_maps_from_pid(proc_map **out_maps, int pid);
 
 void free_proc_maps(proc_map *maps, int sz);
 

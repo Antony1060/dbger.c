@@ -72,10 +72,11 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Tracing: %d (%s)\n", pid, target_pathname);
 
     // get process maps
+    // TODO: maps should be reloaded frequently
     proc_map *maps = NULL;
     int maps_size = 0;
 
-    if ((maps_size = proc_map_from_pid(&maps, pid)) < 0) {
+    if ((maps_size = proc_maps_from_pid(&maps, pid)) < 0) {
         fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
         return 1;
     }

@@ -27,7 +27,7 @@ static int read_pid_file(char **content, int pid) {
     return r;
 }
 
-int proc_map_from_pid(proc_map **out_maps, int pid) {
+int proc_maps_from_pid(proc_map **out_maps, int pid) {
     char *maps_content;
     int maps_size;
     if ((maps_size = read_pid_file(&maps_content, pid)) < 0)

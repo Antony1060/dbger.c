@@ -19,7 +19,7 @@ all: $(TARGET)
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -I. -c $< -o $@
+	$(CC) $(CFLAGS) -I./includes -c $< -o $@
 
 $(TARGET): $(OBJ) $(DISASM_DIR)/build/libdisasm.a $(DISASM_DIR)/disasm.h
 	$(CC) -L$(DISASM_LIB_DIR) $(OBJ) -l:libdisasm.a -lxed -o $(TARGET)

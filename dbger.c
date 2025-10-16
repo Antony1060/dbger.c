@@ -7,7 +7,7 @@
 #include<sys/stat.h>
 #include<sys/mman.h>
 
-#include <disasm/disasm.h>
+#include "disasm/disasm.h"
 
 #include "ansi.h"
 #include "util.h"

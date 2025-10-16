@@ -81,12 +81,12 @@ int proc_map_from_pid(proc_map **out_maps, int pid) {
         curr--;
 
         map.pathname = malloc(256);
-        map.pathname[0] = '\0';
         int i = 0;
         while (maps_content[curr++] != '\n') {
             map.pathname[i] = maps_content[curr - 1];
             i++;
         }
+        map.pathname[i] = '\0';
 
         maps[size++] = map;
         if (size >= capacity) {

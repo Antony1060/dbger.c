@@ -409,15 +409,15 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     void *elf_shstrtab_data = (elf_data + elf_shstrtab->sh_offset);
 
     // assume one string table, I'm actually not sure if there can be multiple
-    Elf64_Shdr *elf_strtab;
-    Elf64_Shdr *elf_symtab;
+    Elf64_Shdr *elf_strtab = 0;
+    Elf64_Shdr *elf_symtab = 0;
 
-    Elf64_Shdr *elf_rela_plt;
-    Elf64_Shdr *elf_dynsym;
-    Elf64_Shdr *elf_dynstr;
+    Elf64_Shdr *elf_rela_plt = 0;
+    Elf64_Shdr *elf_dynsym = 0;
+    Elf64_Shdr *elf_dynstr = 0;
     
-    Elf64_Shdr *elf_gnu_version;
-    Elf64_Shdr *elf_gnu_version_r;
+    Elf64_Shdr *elf_gnu_version = 0;
+    Elf64_Shdr *elf_gnu_version_r = 0;
 
     Elf64_Shdr *elf_execs[elf_header->e_shnum];
     size_t elf_execs_cnt = 0;

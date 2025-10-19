@@ -25,7 +25,7 @@
 void print_section(disasm_section_t *section) {
     printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", section->name);
 
-    char *symbol_name_map[section->size];
+    char **symbol_name_map = malloc(section->size * sizeof(*symbol_name_map));
     memset(symbol_name_map, 0, section->size * sizeof(*symbol_name_map));
     for (size_t i = 0; i < section->n_symbols; i++) {
         disasm_symbol_t *sym = &section->symbols[i];
@@ -69,6 +69,8 @@ void print_section(disasm_section_t *section) {
 
         printf(CRESET "\n");
     }
+
+    free(symbol_name_map);
 }
 
 void print_disassembly(disasm_ctx_t *ctx) {

@@ -7,7 +7,7 @@
 #include<sys/stat.h>
 #include<sys/mman.h>
 
-#include "disasm/disasm.h"
+#include <disasm/disasm.h>
 
 #include "ansi.h"
 #include "util.h"
@@ -162,7 +162,14 @@ int main(int argc, char **argv) {
             printf("Not in binary\n");
         }
 
-        print_state(pid, &regs);
+        disasm_instruction_t *inst_arr[0];
+
+        state_ctx s_ctx = {
+            .pid = pid,
+            .regs = &regs,
+            .inst = inst_arr
+        };
+        print_state(s_ctx);
 
         getchar();
 

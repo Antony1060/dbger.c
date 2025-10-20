@@ -49,7 +49,22 @@ void print_section(disasm_section_t *section) {
             printf(WHT " <" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol_offset);
         }
 
-        printf(HBLK ":\t" BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->inst_name, inst->inst_args);
+        printf(HBLK ":\t");
+
+#if PRINT_RAW_INST
+        printf(BWHT);
+        for (size_t b = 0; b < 15; b++) {
+            if (b != 0)
+                printf(" ");
+            if (b < inst->inst_size)
+                printf("%.2x", inst->inst_raw[b]);
+            else
+                printf("  ");
+        }
+        printf(CRESET "\t");
+#endif // PRINT_RAW_INST
+
+        printf(BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->inst_name, inst->inst_args);
 
         if (inst->has_branch_meta) {
             disasm_branch_meta_t *branch = &inst->branch_meta;
@@ -59,13 +74,6 @@ void print_section(disasm_section_t *section) {
 
             printf(HBLK "    # 0x%lx", branch->resolved_addr);
         }
-        
-#if PRINT_RAW_INST
-        printf("\t" HYEL "%ld:", inst->inst_size);
-
-        for (size_t b = 0; b < inst->inst_size; b++)
-            printf("%.2x", inst->inst_raw[b]);
-#endif // PRINT_RAW_INST
 
         printf(CRESET "\n");
     }

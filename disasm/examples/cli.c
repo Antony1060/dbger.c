@@ -73,11 +73,12 @@ void print_section(disasm_section_t *section) {
     free(symbol_name_map);
 }
 
-void print_disassembly(disasm_ctx_t *ctx) {
+void print_disassembly(disasm_ctx_t *ctx, char *target_section) {
     for (size_t i = 0; i < ctx->n_sections; i++) {
         disasm_section_t *section = &ctx->sections[i];
 
-        print_section(section);
+        if (!target_section || !strcmp(target_section, section->name))
+            print_section(section);
     }
 }
 
@@ -123,7 +124,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    print_disassembly(ctx);
+    print_disassembly(ctx, target_section);
 
     disasm_free(ctx);
 

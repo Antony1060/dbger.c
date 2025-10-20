@@ -111,12 +111,16 @@ static size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffe
     size_t ciel = code_len > 15 ? 15 : code_len;
 
     xed_decoded_inst_t xedd;
+    // TODO: maybe move out
+    xed_chip_features_t chip_features;
+    xed_get_chip_features(&chip_features, XED_CHIP_ALL);
+    xed_modify_chip_features(&chip_features, XED_ISA_SET_CET, 1);
     for (b_read = 1; b_read <= ciel; b_read++) {
         xed_error_enum_t xed_error;
         xed_decoded_inst_zero(&xedd);
         xed_decoded_inst_set_mode(&xedd, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-        xed_error = xed_decode(&xedd, (const xed_uint8_t *) code, b_read);
+        xed_error = xed_decode_with_features(&xedd, (const xed_uint8_t *) code, b_read, &chip_features);
         if (xed_error == XED_ERROR_NONE)
             break;
     }

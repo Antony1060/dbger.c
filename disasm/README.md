@@ -65,5 +65,5 @@ make examples
 #### Usage
 ```sh
 # disassembles itself, recommended to run with less because output can be quite big
-./build/examples/cli ./build/examples/cli | less -r
+./build/examples/cli ./build/examples/cli | less -R
 ```

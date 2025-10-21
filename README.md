@@ -11,6 +11,3 @@ make
 
 ## disasm.c
 More info in [disasm dir](./disasm/).
-
-## Build
-Probably outdated

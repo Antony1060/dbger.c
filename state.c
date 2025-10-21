@@ -69,18 +69,18 @@ void print_disassembly(state_ctx ctx) {
     print_instruction(ctx.pid, ctx.regs->rip);
 }
 
-static inline void print_separator() {
-    printf(HBLK "--------------------------------\n");
+static inline void print_separator(const char * title) {
+    printf(HBLK "-- " BWHT "%-12s" HBLK " ----------------" CRESET "\n", title);
 }
 
 void print_state(state_ctx ctx) {
-    print_separator();
+    print_separator("registers");
     print_regs(ctx);
-    print_separator();
+    print_separator("stack");
     print_stack(ctx);
-    print_separator();
+    print_separator("call trace");
     print_call_trace(ctx);
-    print_separator();
+    print_separator("disassembly");
     print_disassembly(ctx);
-    print_separator();
+    print_separator("end");
 }

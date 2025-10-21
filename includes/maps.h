@@ -19,8 +19,10 @@ typedef struct {
     char *pathname;
 } proc_map;
 
-int proc_maps_from_pid(proc_map **out_maps, int pid);
+ssize_t proc_maps_from_pid(proc_map **out_maps, pid_t pid);
 
-void free_proc_maps(proc_map *maps, int sz);
+void free_proc_maps(proc_map *maps, ssize_t sz);
+
+void __print_maps(proc_map *maps, ssize_t sz);
 
 #endif // __DBGER_MAPS

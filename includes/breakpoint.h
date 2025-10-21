@@ -1,6 +1,9 @@
 #ifndef __DBGER_BREAKPOINT
 #define __DBGER_BREAKPOINT
 
+#include<stdint.h>
+#include<stdbool.h>
+
 typedef struct {
     uint64_t _word;
     uint64_t _addr;

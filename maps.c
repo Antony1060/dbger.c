@@ -4,10 +4,11 @@
 #include<stdbool.h>
 #include<unistd.h>
 #include<fcntl.h>
+#include<string.h>
 
 #include "maps.h"
 
-static int read_pid_file(char **content, int pid) {
+static int read_pid_file(char **content, pid_t pid) {
     char file_name[64];
     snprintf(file_name, 64, "/proc/%d/maps", pid);
 
@@ -28,13 +29,13 @@ static int read_pid_file(char **content, int pid) {
     return r;
 }
 
-int proc_maps_from_pid(proc_map **out_maps, int pid) {
+ssize_t proc_maps_from_pid(proc_map **out_maps, pid_t pid) {
     char *maps_content;
     int maps_size;
     if ((maps_size = read_pid_file(&maps_content, pid)) < 0)
         return -1;
 
-    int size = 0;
+    ssize_t size = 0;
     int capacity = 4;
     proc_map *maps = malloc(sizeof(*maps) * capacity);
 
@@ -105,9 +106,17 @@ int proc_maps_from_pid(proc_map **out_maps, int pid) {
     return size;
 }
 
-void free_proc_maps(proc_map *maps, int sz) {
-    for (int i = 0; i < sz; i++)
+void free_proc_maps(proc_map *maps, ssize_t sz) {
+    for (ssize_t i = 0; i < sz; i++)
         free(maps[i].pathname);
 
     free(maps);
+}
+
+void __print_maps(proc_map *maps, ssize_t sz) {
+    for (ssize_t i = 0; i < sz; i++) {
+        proc_map map = maps[i];
+
+        fprintf(stderr, "%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
+    }
 }

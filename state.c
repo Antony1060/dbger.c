@@ -12,12 +12,15 @@
 #include "state.h"
 #include "maps.h"
 
+const size_t AROUND_INSTRUCTIONS = 12;
+
 static void print_instruction(pid_t pid, unsigned long long rip);
 
 static void print_regs(state_ctx *ctx) {
     #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", ctx->regs->reg, ctx->regs->reg);
 
     printreg(rax);
+    printreg(rbx);
     printreg(rcx);
     printreg(rdx);
     printreg(rsi);
@@ -47,6 +50,55 @@ proc_map *find_current_map(state_ctx *ctx) {
     return 0;
 }
 
+static inline size_t find_instruction_in_section(disasm_section_t *section, uint64_t addr, disasm_instruction_t **inst) {
+    *inst = 0;
+
+    size_t low = 0;
+    size_t high = section->n_instructions - 1;
+
+    while (low <= high) {
+        size_t mid = low + (high - low) / 2;
+
+        disasm_instruction_t *curr = &section->instructions[mid];
+        if (curr->addr < addr)
+            low = mid + 1;
+        else if (curr->addr > addr)
+            high = mid - 1;
+        else {
+            *inst = curr;
+            return mid;
+        }
+    }
+
+    return 0;
+}
+
+static void print_rich_instruction(disasm_instruction_t *inst, bool current) {
+    if (current)
+        printf(HBLK " => ");
+    else
+        printf("    ");
+    printf(HYEL "0x%.16lx", inst->addr);
+
+    if (inst->closest_symbol) {
+        printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol->name, inst->closest_symbol_offset);
+    }
+
+    printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->inst_name, inst->inst_args);
+
+    if (inst->has_branch_meta) {
+        disasm_branch_meta_t *branch = &inst->branch_meta;
+
+        if (branch->pretty_target[0])
+            printf(" %s", branch->pretty_target);
+
+        printf(HBLK "    # 0x%lx", branch->resolved_addr);
+    }
+
+    printf(CRESET);
+}
+
+// TODO: support non-PIE binaries
 static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     uint64_t map_offset = s_ctx->regs->rip - map->addr_start + map->offset;
 
@@ -65,16 +117,50 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     if (!section)
         return -1;
 
-    disasm_instruction_t *inst = s_ctx->inst[section_idx][map_offset - section->code_start];
+    disasm_instruction_t *inst = 0;
+    size_t idx = find_instruction_in_section(section, map_offset, &inst);
     if (!inst)
         return -1;
 
-    printf("section: %s\n", section->name);
+    // find instructions around this one
+    const int around_len = AROUND_INSTRUCTIONS + 1;
+    disasm_instruction_t *around[around_len] = {};
+    memset(around, 0, sizeof(*around) * around_len);
+    around[around_len - 1] = inst;
 
-    printf("%s %s\n", inst->inst_name, inst->inst_args);
+    // very ugly
+    size_t found = 0;
+    ssize_t before = idx - 1; size_t after = idx + 1;
+    bool b_done = before < 0, a_done = after >= section->n_instructions;
+    while (found < AROUND_INSTRUCTIONS && !(b_done && a_done)) {
+        if (!b_done) {
+            size_t around_idx = AROUND_INSTRUCTIONS - (idx - before);
+            around[around_idx] = &section->instructions[before--];
 
-    do {
-    } while(false);
+            found++;
+        }
+
+        if (!a_done) {
+            size_t around_idx = AROUND_INSTRUCTIONS + (after - idx);
+            around[around_idx % around_len] = &section->instructions[after++];
+
+            found++;
+        }
+
+        if (!b_done && before < 0) b_done = 1;
+
+        if (!a_done && after >= section->n_instructions) a_done = 1;
+    }
+    before++; after--;
+
+    before = (ssize_t) idx - before;
+    after = after - idx;
+
+    for (size_t i = 0; i < found + 1; i++) {
+        size_t idx = (AROUND_INSTRUCTIONS - before + i) % around_len;
+        print_rich_instruction(around[idx], idx == AROUND_INSTRUCTIONS);
+        printf("\n");
+    }
 
     return 0;
 }
@@ -86,7 +172,7 @@ static void print_disassembly(state_ctx *ctx) {
     } else {
         printf(BWHT "currently in " BHRED "%s\n" CRESET, current->pathname);
     }
-    
+
     if (!current || strncmp_min(current->pathname, ctx->target_pathname)) {
         printf(HYEL "  not the source binary, expect poorer disassembly\n" CRESET);
         print_instruction(ctx->pid, ctx->regs->rip);
@@ -104,7 +190,11 @@ static inline void print_separator(const char *title) {
 }
 
 void print_state(state_ctx *ctx) {
-    printf(HBLK "-- " HCYN "%d" BWHT ": " HYEL "%s" CRESET "\n", ctx->pid, ctx->target_pathname);
+    // TODO: ncurses
+    for (int i = 0; i < 40; i++)
+        printf("\n");
+
+    printf(HBLK "-- " CYN "%d" BWHT ": " HYEL "%s" CRESET "\n", ctx->pid, ctx->target_pathname);
     print_separator("registers");
     print_regs(ctx);
     print_separator("stack");

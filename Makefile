@@ -17,7 +17,7 @@ clean:
 
 all: $(TARGET)
 
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c ./includes/util.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I. -I./includes -c $< -o $@
 

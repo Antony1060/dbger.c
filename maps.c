@@ -64,7 +64,7 @@ int proc_maps_from_pid(proc_map_array *out_maps, pid_t pid) {
                 case 'p':
                     map.perms |= MAP_PERM_PRIVATE;
                     break;
-            } 
+            }
         }
 
         sscanf(maps_content + curr, "%lx", &map.offset);
@@ -97,7 +97,7 @@ int proc_maps_from_pid(proc_map_array *out_maps, pid_t pid) {
         }
 
         if (curr >= maps_size)
-           break; 
+           break;
     }
 
     free(maps_content);

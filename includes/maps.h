@@ -10,8 +10,8 @@ enum {
 };
 
 typedef struct {
-    uint64_t addr_start; 
-    uint64_t addr_end; 
+    uint64_t addr_start;
+    uint64_t addr_end;
     int perms;
     uint64_t offset;
     // dev

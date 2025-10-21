@@ -14,7 +14,7 @@
 #include "disassembly.h"
 
 int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
-    char file_name[64];
+    char file_name[256];
     snprintf(file_name, 64, "/proc/%d/exe", pid);
 
     return readlink(file_name, pathname, n);
@@ -31,7 +31,8 @@ int main(int argc, char **argv) {
         errquit("trace_and_fork(...)");
 
     // get process pathname
-    char target_pathname[128];
+    char target_pathname[256];
+    memset(target_pathname, 0, sizeof(*target_pathname) * 256);
     if (get_pid_pathname(pid, target_pathname, 128) < 0)
         errquit("get_pid_pathname(pid, ...)");
 
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
     disasm_ctx_t *d_ctx;
     size_t target_file_size;
     if (open_and_disasm(&d_ctx, &elf_data, &target_file_size, target_pathname) < 0) {
-        fprintf(stderr, "ERROR: failed to disassemble");
+        fprintf(stderr, "ERROR: failed to disassemble\n");
         return 1;
     }
 

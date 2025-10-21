@@ -13,10 +13,6 @@
 #include "trace.h"
 #include "disassembly.h"
 
-static inline size_t min(size_t a, size_t b) {
-    return (a < b ? a : b);
-}
-
 int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
     char file_name[64];
     snprintf(file_name, 64, "/proc/%d/exe", pid);
@@ -40,14 +36,12 @@ printf("%zu\n", sizeof(disasm_instruction_t));
     if (get_pid_pathname(pid, target_pathname, 128) < 0)
         errquit("get_pid_pathname(pid, ...)");
 
-    fprintf(stderr, "Tracing: %d (%s)\n", pid, target_pathname);
+    fprintf(stderr, "* tracing: %d (%s)\n", pid, target_pathname);
 
     // get process maps
-    // TODO: maps should be reloaded frequently
-    proc_map *maps = NULL;
-    ssize_t maps_size = 0;
+    proc_map_array maps;
 
-    if ((maps_size = proc_maps_from_pid(&maps, pid)) < 0) {
+    if (proc_maps_from_pid(&maps, pid) < 0) {
         fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
         return 1;
     }
@@ -57,15 +51,15 @@ printf("%zu\n", sizeof(disasm_instruction_t));
     proc_map guess_exec = {0};
 
     // find first executable section in the binary
-    for (ssize_t i = 0; i < maps_size; i++) {
-        proc_map map = maps[i];
+    for (size_t i = 0; i < maps.length; i++) {
+        proc_map map = maps.items[i];
 
-        if (map.perms & MAP_PERM_EXEC && !strncmp(map.pathname, target_pathname, min(strlen(map.pathname), strlen(target_pathname)))) {
+        if (map.perms & MAP_PERM_EXEC && !strncmp_min(map.pathname, target_pathname)) {
             guess_exec = map;
         }
     }
 
-    __print_maps(maps, maps_size);
+    __print_maps(&maps);
 
     // load and disassemble the binary
     void *elf_data;
@@ -130,15 +124,16 @@ printf("%zu\n", sizeof(disasm_instruction_t));
         }
 
         // reload maps
-        ssize_t old_maps_size = maps_size;
-        if ((maps_size = proc_maps_from_pid(&maps, pid)) < 0) {
+        size_t old_maps_size = maps.length;
+        free_proc_maps(&maps);
+        if (proc_maps_from_pid(&maps, pid) < 0) {
             fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
             break;
         }
 
-        if (old_maps_size != maps_size) {
+        if (old_maps_size != maps.length) {
             printf("* maps possibly changed\n");
-            __print_maps(maps, maps_size);
+            __print_maps(&maps);
         }
 
         if (break_present(&last_break)) {
@@ -150,21 +145,15 @@ printf("%zu\n", sizeof(disasm_instruction_t));
         if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0)
             errquit("ptrace(PTRACE_GETREGS)");
 
-        // TODO: move to print_state
-        // TODO: include all other sections of the program that might be executable
-        // TODO: show which map it's executing from
-        if (regs.rip < guess_exec.addr_start || regs.rip > guess_exec.addr_end) {
-            printf("Not in binary\n");
-        }
-
         state_ctx s_ctx = {
             .pid = pid,
+            .target_pathname = target_pathname,
             .regs = &regs,
             .d_ctx = d_ctx,
             .inst = inst_arr,
-            .maps = maps,
+            .maps = &maps,
         };
-        print_state(s_ctx);
+        print_state(&s_ctx);
 
         getchar();
 
@@ -172,7 +161,7 @@ printf("%zu\n", sizeof(disasm_instruction_t));
             errquit("ptrace(PTRACE_SINGLESTEP)");
     }
 
-    free_proc_maps(maps, maps_size);
+    free_proc_maps(&maps);
 
     for (size_t i = 0; i < d_ctx->n_sections; i++) {
         free(inst_arr[i]);

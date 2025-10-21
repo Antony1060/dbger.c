@@ -29,14 +29,14 @@ static int read_pid_file(char **content, pid_t pid) {
     return r;
 }
 
-ssize_t proc_maps_from_pid(proc_map **out_maps, pid_t pid) {
+int proc_maps_from_pid(proc_map_array *out_maps, pid_t pid) {
     char *maps_content;
     int maps_size;
     if ((maps_size = read_pid_file(&maps_content, pid)) < 0)
         return -1;
 
-    ssize_t size = 0;
-    int capacity = 4;
+    size_t size = 0;
+    size_t capacity = 4;
     proc_map *maps = malloc(sizeof(*maps) * capacity);
 
     int curr = 0;
@@ -102,20 +102,24 @@ ssize_t proc_maps_from_pid(proc_map **out_maps, pid_t pid) {
 
     free(maps_content);
 
-    *out_maps = maps;
-    return size;
+    *out_maps = (proc_map_array) {
+        .length = size,
+        .items = maps,
+    };
+
+    return 0;
 }
 
-void free_proc_maps(proc_map *maps, ssize_t sz) {
-    for (ssize_t i = 0; i < sz; i++)
-        free(maps[i].pathname);
+void free_proc_maps(proc_map_array *maps) {
+    for (size_t i = 0; i < maps->length; i++)
+        free(maps->items[i].pathname);
 
-    free(maps);
+    free(maps->items);
 }
 
-void __print_maps(proc_map *maps, ssize_t sz) {
-    for (ssize_t i = 0; i < sz; i++) {
-        proc_map map = maps[i];
+void __print_maps(proc_map_array *maps) {
+    for (size_t i = 0; i < maps->length; i++) {
+        proc_map map = maps->items[i];
 
         fprintf(stderr, "%s (%lx-%lx) (%b)\n", map.pathname, map.addr_start, map.addr_end, map.perms);
     }

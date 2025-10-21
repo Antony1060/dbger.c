@@ -10,6 +10,111 @@
 #include "ansi.h"
 #include "util.h"
 #include "state.h"
+#include "maps.h"
+
+static void print_instruction(pid_t pid, unsigned long long rip);
+
+static void print_regs(state_ctx *ctx) {
+    #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", ctx->regs->reg, ctx->regs->reg);
+
+    printreg(rax);
+    printreg(rcx);
+    printreg(rdx);
+    printreg(rsi);
+    printreg(rdi);
+    printreg(rip);
+    printreg(rsp);
+    printreg(rbp);
+}
+
+static void print_stack(state_ctx *ctx) {
+    (void) ctx;
+}
+
+static void print_call_trace(state_ctx *ctx) {
+    (void) ctx;
+}
+
+proc_map *find_current_map(state_ctx *ctx) {
+    for (size_t i = 0; i < ctx->maps->length; i++) {
+        proc_map *map = &ctx->maps->items[i];
+
+        uint64_t rip = ctx->regs->rip;
+        if (map->perms & MAP_PERM_EXEC && rip >= map->addr_start && rip <= map->addr_end)
+            return map;
+    }
+
+    return 0;
+}
+
+static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
+    uint64_t map_offset = s_ctx->regs->rip - map->addr_start + map->offset;
+
+    disasm_ctx_t *ctx = s_ctx->d_ctx;
+    disasm_section_t *section = 0;
+    size_t section_idx;
+    for (section_idx = 0; section_idx < ctx->n_sections; section_idx++) {
+        disasm_section_t *curr = &ctx->sections[section_idx];
+
+        if (map_offset >= curr->code_start && map_offset <= curr->code_start + curr->size) {
+            section = curr;
+            break;
+        }
+    }
+
+    if (!section)
+        return -1;
+
+    disasm_instruction_t *inst = s_ctx->inst[section_idx][map_offset - section->code_start];
+    if (!inst)
+        return -1;
+
+    printf("section: %s\n", section->name);
+
+    printf("%s %s\n", inst->inst_name, inst->inst_args);
+
+    do {
+    } while(false);
+
+    return 0;
+}
+
+static void print_disassembly(state_ctx *ctx) {
+    proc_map *current = find_current_map(ctx);
+    if (!current) {
+        printf(RED "unknown memory executing\n" CRESET);
+    } else {
+        printf(BWHT "currently in " BHRED "%s\n" CRESET, current->pathname);
+    }
+    
+    if (!current || strncmp_min(current->pathname, ctx->target_pathname)) {
+        printf(HYEL "  not the source binary, expect poorer disassembly\n" CRESET);
+        print_instruction(ctx->pid, ctx->regs->rip);
+        return;
+    }
+
+    if (print_rich_disassembly(ctx, current) < 0) {
+        printf(HYEL "  ?? what, rich disassembly failed, expect poorer disassembly\n" CRESET);
+        print_instruction(ctx->pid, ctx->regs->rip);
+    }
+}
+
+static inline void print_separator(const char *title) {
+    printf(HBLK "-- " BWHT "%-12s" HBLK " ----------------" CRESET "\n", title);
+}
+
+void print_state(state_ctx *ctx) {
+    printf(HBLK "-- " HCYN "%d" BWHT ": " HYEL "%s" CRESET "\n", ctx->pid, ctx->target_pathname);
+    print_separator("registers");
+    print_regs(ctx);
+    print_separator("stack");
+    print_stack(ctx);
+    print_separator("call trace");
+    print_call_trace(ctx);
+    print_separator("disassembly");
+    print_disassembly(ctx);
+    print_separator("end");
+}
 
 static void print_instruction(pid_t pid, unsigned long long rip) {
     uint8_t inst[15];
@@ -41,46 +146,5 @@ static void print_instruction(pid_t pid, unsigned long long rip) {
         exit(1);
     }
 
-    printf("" HBLU "%s" CRESET "\n", buf);
-}
-
-void print_regs(state_ctx ctx) {
-    #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", ctx.regs->reg, ctx.regs->reg);
-
-    printreg(rax);
-    printreg(rcx);
-    printreg(rdx);
-    printreg(rsi);
-    printreg(rdi);
-    printreg(rip);
-    printreg(rsp);
-    printreg(rbp);
-}
-
-void print_stack(state_ctx ctx) {
-    (void) ctx;
-}
-
-void print_call_trace(state_ctx ctx) {
-    (void) ctx;
-}
-
-void print_disassembly(state_ctx ctx) {
-    print_instruction(ctx.pid, ctx.regs->rip);
-}
-
-static inline void print_separator(const char * title) {
-    printf(HBLK "-- " BWHT "%-12s" HBLK " ----------------" CRESET "\n", title);
-}
-
-void print_state(state_ctx ctx) {
-    print_separator("registers");
-    print_regs(ctx);
-    print_separator("stack");
-    print_stack(ctx);
-    print_separator("call trace");
-    print_call_trace(ctx);
-    print_separator("disassembly");
-    print_disassembly(ctx);
-    print_separator("end");
+    printf("" HBLU "%s" CRESET " (TODO)\n", buf);
 }

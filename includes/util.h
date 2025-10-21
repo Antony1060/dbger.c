@@ -9,4 +9,12 @@
     exit(1); \
 } while(0);
 
+static inline size_t min(size_t a, size_t b) {
+    return (a < b ? a : b);
+}
+
+static inline int strncmp_min(const char *first, const char *second) {
+    return strncmp(first, second, min(strlen(first), strlen(second)) + 1);
+}
+
 #endif // __DBGER_UTIL

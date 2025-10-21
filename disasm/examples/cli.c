@@ -25,22 +25,11 @@
 void print_section(disasm_section_t *section) {
     printf("\n\n" HBLK "disassembly of section " CRESET "%s" HBLK ": " CRESET "\n", section->name);
 
-    char **symbol_name_map = malloc(section->size * sizeof(*symbol_name_map));
-    memset(symbol_name_map, 0, section->size * sizeof(*symbol_name_map));
-    for (size_t i = 0; i < section->n_symbols; i++) {
-        disasm_symbol_t *sym = &section->symbols[i];
-
-        if (sym->addr < section->code_start || sym->addr >= section->code_start + section->size)
-            fprintf(stderr, "symbol error: out of bounds %lu (%lu, %lu)", sym->addr, section->code_start, section->size);
-
-        symbol_name_map[sym->addr - section->code_start] = sym->name;
-    }
-
     for (size_t i = 0; i < section->n_instructions; i++) {
         disasm_instruction_t *inst = &section->instructions[i];
 
-        if (symbol_name_map[inst->addr - section->code_start]) {
-            printf("\n" HCYN "%s" HBLK ":" CRESET "\n", symbol_name_map[inst->addr - section->code_start]);
+        if (inst->closest_symbol && inst->closest_symbol_offset == 0) {
+            printf("\n" HCYN "%s" HBLK ":" CRESET "\n", inst->closest_symbol->name);
         }
 
         printf("\t" HYEL "%p", (void *) inst->addr);
@@ -77,8 +66,6 @@ void print_section(disasm_section_t *section) {
 
         printf(CRESET "\n");
     }
-
-    free(symbol_name_map);
 }
 
 void print_disassembly(disasm_ctx_t *ctx, char *target_section) {

@@ -7,7 +7,7 @@ DISASM_LIB_DIR=$(DISASM_DIR)/build
 
 SRC=$(wildcard *.c)
 OBJ=$(SRC:%.c=$(BUILD_DIR)/%.o)
-TARGET=./dbger
+TARGET=./debugger
 
 .PHONY: default
 default: all

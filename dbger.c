@@ -21,7 +21,6 @@ int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
 }
 
 int main(int argc, char **argv) {
-printf("%zu\n", sizeof(disasm_instruction_t));
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <command...>\n", argv[0]);
         return 1;

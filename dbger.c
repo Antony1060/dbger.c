@@ -70,18 +70,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    printf("disasm_ctx_t: %p\n", d_ctx);
-    // inst_arr[section_idx] -> disasm_instruction_t *[] - array of pointers for that section
-    disasm_instruction_t ***inst_arr = malloc(sizeof(*inst_arr) * d_ctx->n_sections);
-    // allocate the array
-    for (size_t i = 0; i < d_ctx->n_sections; i++) {
-        const size_t size = sizeof(**inst_arr) * d_ctx->sections[i].size;
-        inst_arr[i] = malloc(size);
-        memset(inst_arr[i], 0, size);
-    }
-    // fill disassembly in a linear array
-    fill_instruction_array(d_ctx, inst_arr);
-
     // last breakpoint set
     break_meta last_break = {0};
 
@@ -150,7 +138,6 @@ int main(int argc, char **argv) {
             .target_pathname = target_pathname,
             .regs = &regs,
             .d_ctx = d_ctx,
-            .inst = inst_arr,
             .maps = &maps,
         };
         print_state(&s_ctx);
@@ -162,11 +149,6 @@ int main(int argc, char **argv) {
     }
 
     free_proc_maps(&maps);
-
-    for (size_t i = 0; i < d_ctx->n_sections; i++) {
-        free(inst_arr[i]);
-    }
-    free(inst_arr);
 
     disasm_free(d_ctx);
 

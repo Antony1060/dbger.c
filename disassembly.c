@@ -8,17 +8,6 @@
 
 #include "disassembly.h"
 
-void fill_instruction_array(disasm_ctx_t *ctx, disasm_instruction_t ***arr) {
-    for (size_t i = 0; i < ctx->n_sections; i++) {
-        disasm_section_t *section = &ctx->sections[i];
-
-        for (size_t j = 0; j < section->n_instructions; j++) {
-            disasm_instruction_t *inst = &section->instructions[j];
-            arr[i][inst->addr - section->code_start] = inst;
-        }
-    }
-}
-
 // TODO: better error handling
 int open_and_disasm(disasm_ctx_t **_ctx, void **_elf_data, size_t *stat_size, const char *target_pathname) {
     int target_fd;

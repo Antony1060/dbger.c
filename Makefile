@@ -6,6 +6,7 @@ DISASM_DIR=./disasm
 DISASM_LIB_DIR=$(DISASM_DIR)/build
 
 SRC=$(wildcard *.c)
+HEADERS=$(wildcard includes/*.h) # eh, idx
 OBJ=$(SRC:%.c=$(BUILD_DIR)/%.o)
 TARGET=./debugger
 
@@ -17,7 +18,7 @@ clean:
 
 all: $(TARGET)
 
-$(BUILD_DIR)/%.o: %.c ./includes/util.h
+$(BUILD_DIR)/%.o: %.c $(HEADERS)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I. -I./includes -c $< -o $@
 

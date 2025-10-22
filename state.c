@@ -123,42 +123,15 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
         return -1;
 
     // find instructions around this one
-    const int around_len = AROUND_INSTRUCTIONS + 1;
-    disasm_instruction_t *around[around_len] = {};
-    memset(around, 0, sizeof(*around) * around_len);
-    around[around_len - 1] = inst;
+    size_t around_half = AROUND_INSTRUCTIONS / 2;
+    size_t end = min(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
+    size_t needed_before = AROUND_INSTRUCTIONS - min(end - idx, around_half);
+    size_t start = needed_before > idx ? 0 : idx - needed_before;
+    size_t after = min(AROUND_INSTRUCTIONS - (idx - start), end - idx);
+    end = idx + after;
 
-    // very ugly
-    size_t found = 0;
-    ssize_t before = idx - 1; size_t after = idx + 1;
-    bool b_done = before < 0, a_done = after >= section->n_instructions;
-    while (found < AROUND_INSTRUCTIONS && !(b_done && a_done)) {
-        if (!b_done) {
-            size_t around_idx = AROUND_INSTRUCTIONS - (idx - before);
-            around[around_idx] = &section->instructions[before--];
-
-            found++;
-        }
-
-        if (!a_done) {
-            size_t around_idx = AROUND_INSTRUCTIONS + (after - idx);
-            around[around_idx % around_len] = &section->instructions[after++];
-
-            found++;
-        }
-
-        if (!b_done && before < 0) b_done = 1;
-
-        if (!a_done && after >= section->n_instructions) a_done = 1;
-    }
-    before++; after--;
-
-    before = (ssize_t) idx - before;
-    after = after - idx;
-
-    for (size_t i = 0; i < found + 1; i++) {
-        size_t idx = (AROUND_INSTRUCTIONS - before + i) % around_len;
-        print_rich_instruction(s_ctx, around[idx], idx == AROUND_INSTRUCTIONS);
+    for (size_t i = start; i <= end; i++) {
+        print_rich_instruction(s_ctx, &section->instructions[i], i == idx);
         printf("\n");
     }
 

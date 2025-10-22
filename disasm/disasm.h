@@ -81,4 +81,9 @@ void free_section(disasm_section_t *section);
 
 void disasm_free(disasm_ctx_t *ctx);
 
+// internal functions
+size_t __disasm_read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size_t len, void *ip, uint64_t* jump_target, xed_category_enum_t* category);
+
+void __disasm_color_instruction(char* buffer, char* name, char* args);
+
 #endif // __DISASM_H

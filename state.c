@@ -14,7 +14,7 @@
 
 const size_t AROUND_INSTRUCTIONS = 12;
 
-static void print_instruction(pid_t pid, unsigned long long rip);
+static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
 
 static void print_regs(state_ctx *ctx) {
     #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", ctx->regs->reg, ctx->regs->reg);
@@ -152,13 +152,13 @@ static void print_disassembly(state_ctx *ctx) {
 
     if (!current || strncmp_min(current->pathname, ctx->target_pathname)) {
         printf(HYEL "  not the source binary, expect poorer disassembly\n" CRESET);
-        print_instruction(ctx->pid, ctx->regs->rip);
+        print_forward_disassembly(ctx->pid, ctx->regs->rip);
         return;
     }
 
     if (print_rich_disassembly(ctx, current) < 0) {
         printf(HYEL "  ?? what, rich disassembly failed, expect poorer disassembly\n" CRESET);
-        print_instruction(ctx->pid, ctx->regs->rip);
+        print_forward_disassembly(ctx->pid, ctx->regs->rip);
     }
 }
 
@@ -167,10 +167,6 @@ static inline void print_separator(const char *title) {
 }
 
 void print_state(state_ctx *ctx) {
-    // TODO: ncurses
-    for (int i = 0; i < 40; i++)
-        printf("\n");
-
     printf(HBLK "-- " CYN "%d" BWHT ": " HYEL "%s" CRESET "\n", ctx->pid, ctx->target_pathname);
     print_separator("registers");
     print_regs(ctx);
@@ -183,35 +179,43 @@ void print_state(state_ctx *ctx) {
     print_separator("end");
 }
 
-static void print_instruction(pid_t pid, unsigned long long rip) {
-    uint8_t inst[15];
-    struct iovec remote_inst = { (void*) rip, 15 };
-    struct iovec local_inst = { &inst, 15 };
+static size_t print_forward_disassembly(pid_t pid, uint64_t rip) {
+    char buffer[256];
+    char name[32];
+    char args[256];
 
-    ssize_t b_read = process_vm_readv(pid, &local_inst, 1, &remote_inst, 1, 0);
+    size_t inst_read = 0;
+    while (inst_read < AROUND_INSTRUCTIONS + 1) {
+        const size_t data_len = 15;
+        uint8_t data[data_len];
+        struct iovec remote_inst = { (void*) rip, data_len };
+        struct iovec local_inst = { &data, data_len };
 
-    xed_decoded_inst_t xedd;
-    ssize_t i;
-    for (i = 0; i < b_read; i++) {
-        xed_error_enum_t xed_error;
-        xed_decoded_inst_zero(&xedd);
-        xed_decoded_inst_set_mode(&xedd, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+        process_vm_readv(pid, &local_inst, 1, &remote_inst, 1, 0);
 
-        xed_error = xed_decode(&xedd, (const xed_uint8_t *) inst, i);
-        if (xed_error == XED_ERROR_NONE)
+        uint64_t jump_target;
+        size_t shift = __disasm_read_first_instruction(data, data_len, buffer, 256, (void *) rip, &jump_target, NULL);
+        if (shift == 0)
             break;
+
+        __disasm_color_instruction(buffer, name, args);
+
+        if (inst_read == 0)
+            printf(HBLK " => ");
+        else
+            printf("    ");
+
+        printf(HYEL "0x%.16lx" WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, rip, name, args);
+
+        if (jump_target) {
+            printf(HBLK "    # 0x%lx", jump_target);
+        }
+
+        printf(CRESET "\n");
+
+        rip += shift;
+        inst_read++;
     }
 
-    if (i >= b_read) {
-        printf("\t" HRED "error (unrecognized instruction)" CRESET "\n");
-        return;
-    }
-
-    char buf[128];
-    if (!xed_format_context(XED_SYNTAX_INTEL, &xedd, buf, 128, (const xed_uint64_t) rip, 0, 0)) {
-        fprintf(stderr, "ERROR: xed_format_context()\n");
-        exit(1);
-    }
-
-    printf("" HBLU "%s" CRESET " (TODO)\n", buf);
+    return inst_read;
 }

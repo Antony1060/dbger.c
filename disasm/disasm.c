@@ -45,7 +45,7 @@ typedef struct {
 
 static bool validate_elf_header(Elf64_Ehdr *header) {
     disasm_elf_ident_t elf_ident = *((disasm_elf_ident_t *)header);
-    
+
     if (elf_ident.ei_magic.value != 0x464c457f)
         return false;
 
@@ -57,21 +57,24 @@ static bool validate_elf_header(Elf64_Ehdr *header) {
 }
 
 static uint64_t find_jump_target_after_rip(xed_decoded_inst_t *xedd, void *ip, size_t inst_len) {
-    size_t memop_len = xed_decoded_inst_number_of_memory_operands(xedd); 
+    size_t memop_len = xed_decoded_inst_number_of_memory_operands(xedd);
     for (size_t i = 0; i < memop_len; i++) {
         xed_int64_t disp = xed_decoded_inst_get_memory_displacement(xedd, i);
-    
+
         return (uint64_t) ip + inst_len + disp;
     }
     return 0;
 }
 
-static uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst_len, xed_category_enum_t* category) {
-    *category = xed_decoded_inst_get_category(xedd);
-    
-    if (*category != XED_CATEGORY_COND_BR && *category != XED_CATEGORY_UNCOND_BR && *category != XED_CATEGORY_CALL)
+static uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst_len, xed_category_enum_t *_category) {
+    xed_category_enum_t category = xed_decoded_inst_get_category(xedd);
+
+    if(_category)
+        *_category = category;
+
+    if (category != XED_CATEGORY_COND_BR && category != XED_CATEGORY_UNCOND_BR && category != XED_CATEGORY_CALL)
         return 0;
-   
+
     const xed_inst_t *inst = xed_decoded_inst_inst(xedd);
     uint32_t operands_len = xed_inst_noperands(inst);
 
@@ -85,7 +88,7 @@ static uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst
             case XED_OPERAND_RELBR:
                 xed_int64_t disp = xed_decoded_inst_get_branch_displacement(xedd);
                 xed_uint64_t target = ((const xed_uint64_t) ip) + inst_len + disp;
-                
+
                 return target;
            default:
                 break;
@@ -93,7 +96,7 @@ static uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst
 
         if (xed_operand_is_register(op_name)) {
             xed_reg_enum_t reg = xed_decoded_inst_get_reg(xedd, op_name);
-            
+
             // we can figure out the correct address for RIP
             if (reg == XED_REG_RIP) {
                 return find_jump_target_after_rip(xedd, ip, inst_len);
@@ -106,7 +109,7 @@ static uint64_t find_jump_target(xed_decoded_inst_t *xedd, void *ip, size_t inst
     return 0;
 }
 
-static size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size_t len, void *ip, uint64_t* jump_target, xed_category_enum_t* category) {
+size_t __disasm_read_first_instruction(uint8_t *code, size_t code_len, char* buffer, size_t len, void *ip, uint64_t* jump_target, xed_category_enum_t* category) {
     size_t b_read;
     size_t ciel = code_len > 15 ? 15 : code_len;
 
@@ -134,7 +137,7 @@ static size_t read_first_instruction(uint8_t *code, size_t code_len, char* buffe
     return b_read;
 }
 
-static void color_instruction(char* buffer, char* name, char* args) {
+void __disasm_color_instruction(char* buffer, char* name, char* args) {
     size_t len = strlen(buffer);
 
     int inst_len = 0;
@@ -168,19 +171,19 @@ static Elf64_Vernaux *walk_versions(Elf64_Verneed *verneed_head, Elf64_Half idx)
             if (vna.vna_other == idx)
                 return vnas + i;
         }
-       
+
         if (!verneed_head->vn_next)
            break;
 
         verneed_head = ((void *) verneed_head) + verneed_head->vn_next;
-    } 
+    }
 
     return 0;
 }
 
 static void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *rela, plt_data_t plt_data) {
     uint64_t dynsym_idx = ELF64_R_SYM(rela->r_info);
-    
+
     Elf64_Sym *sym = ((Elf64_Sym *) (elf_data + plt_data.dynsym->sh_offset)) + dynsym_idx;
 
     char *name = plt_data.dynstr_data + sym->st_name;
@@ -197,7 +200,7 @@ static void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *
 
         if (vna)
             version = plt_data.dynstr_data + vna->vna_name;
-    }   
+    }
 
     if (version)
         sprintf(buffer, "%s@%s", name, version);
@@ -208,14 +211,14 @@ static void write_full_dynamic_symbol(char* buffer, void *elf_data, Elf64_Rela *
 static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *code, size_t n, void* start_addr, sym_table_t *sym_table, sym_table_t *plt_table, plt_data_t plt_data) {
     char buffer[256];
     void *ip = start_addr;
-   
+
     size_t capacity = 1;
     section->instructions = malloc(sizeof(*section->instructions) * capacity);
     section->n_instructions = 0;
     while (n != 0) {
         uint64_t jump_target;
         xed_category_enum_t category;
-        size_t shift = read_first_instruction(code, n, buffer, 256, ip, &jump_target, &category);
+        size_t shift = __disasm_read_first_instruction(code, n, buffer, 256, ip, &jump_target, &category);
         if (shift == 0) {
             return -1;
         }
@@ -239,7 +242,7 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
         };
 
         disasm_instruction_t* inst = &section->instructions[section->n_instructions];
-        color_instruction(buffer, inst->inst_name, inst->inst_args);
+        __disasm_color_instruction(buffer, inst->inst_name, inst->inst_args);
 
         if (jump_target) {
             disasm_branch_meta_t* branch = &inst->branch_meta;
@@ -249,7 +252,7 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
             if (target_table_idx < sym_table->length && sym_table->items[target_table_idx].name != 0) {
                 sym_table_entry_t target_entry = sym_table->items[target_table_idx];
                 int w = sprintf(branch->pretty_target, "<" GRN "%s", target_entry.name);
-                
+
                 if (target_entry.last_dist != 0) {
                     w += sprintf(branch->pretty_target + w, HBLU "+0x%lx", target_entry.last_dist);
                 }
@@ -263,7 +266,7 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
                 if (target_table_idx < plt_table->length && plt_table->items[target_table_idx].name != 0) {
                     sym_table_entry_t target_entry = plt_table->items[target_table_idx];
                     int w = sprintf(branch->pretty_target, "<" HBLU "plt" HBLK ":" GRN "%s", target_entry.name);
-                
+
                     if (target_entry.last_dist != 0) {
                         w += sprintf(branch->pretty_target + w, HBLU "+0x%lx", target_entry.last_dist);
                     }
@@ -273,18 +276,18 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
                     branch->is_plt = 1;
                 }
             }
-    
+
             // if we're logging a plt table, it's nice to show that a jump is going to a GOT (like objdump -d -j .plt shows)
             if (plt_data.is_plt) {
                 // 🍝
-                
+
                 size_t rela_len = plt_data.rela_plt->sh_size / sizeof (Elf64_Rela);
                 for (size_t i = 0; i < rela_len; i++) {
                     Elf64_Rela *rela = ((Elf64_Rela *) (elf_data + plt_data.rela_plt->sh_offset)) + i;
-                    
+
                     if (rela->r_offset != jump_target)
                         continue;
-                    
+
                     char buf[256];
                     write_full_dynamic_symbol(buf, elf_data, rela, plt_data);
 
@@ -301,7 +304,7 @@ static int code_disassemble(disasm_section_t* section, void *elf_data, uint8_t *
         n -= shift;
         code += shift;
         ip += shift;
-        
+
         section->n_instructions++;
         if (section->n_instructions >= capacity) {
             capacity *= 2;
@@ -337,7 +340,7 @@ static int handle_exec_section(disasm_section_t* out_section, void *elf_data, El
             uint64_t idx = sym->st_value - code_begin;
             sym_table_entry_t val = { 0, 0, elf_strtab_data + sym->st_name };
             sym_table->items[idx] = val;
-            
+
             sym_cnt++;
         }
     } else {
@@ -346,7 +349,7 @@ static int handle_exec_section(disasm_section_t* out_section, void *elf_data, El
         sym_cnt++;
         for (size_t i = 1; i < section->sh_size / 16; i++) {
             uint64_t addr = code_begin + (i * 16);
-            
+
             Elf64_Rela *rela = ((Elf64_Rela *) (elf_data + plt_data.rela_plt->sh_offset)) + (i - 1);
             uint64_t dynsym_idx = ELF64_R_SYM(rela->r_info);
 
@@ -371,7 +374,7 @@ static int handle_exec_section(disasm_section_t* out_section, void *elf_data, El
         if ((curr->name != 0 || last.name == 0) && last.name != curr->name) {
             curr->out_sym_idx = out_section->n_symbols;
             out_section->symbols[out_section->n_symbols++] = (disasm_symbol_t) {
-                .name = curr->name, 
+                .name = curr->name,
                 .addr = code_begin + i
             };
             last = *curr;
@@ -408,7 +411,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     }
 
     Elf64_Shdr *elf_shdr =  (Elf64_Shdr *) (elf_data + elf_header->e_shoff);
-    
+
     Elf64_Shdr *elf_shstrtab = elf_shdr + elf_header->e_shstrndx;
     void *elf_shstrtab_data = (elf_data + elf_shstrtab->sh_offset);
 
@@ -419,13 +422,13 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     Elf64_Shdr *elf_rela_plt = 0;
     Elf64_Shdr *elf_dynsym = 0;
     Elf64_Shdr *elf_dynstr = 0;
-    
+
     Elf64_Shdr *elf_gnu_version = 0;
     Elf64_Shdr *elf_gnu_version_r = 0;
 
     Elf64_Shdr *elf_execs[elf_header->e_shnum];
     size_t elf_execs_cnt = 0;
-        
+
     for (uint64_t i = 0; i < elf_header->e_shnum; i++) {
         Elf64_Shdr shdr = elf_shdr[i];
 
@@ -433,11 +436,11 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
             continue;
 
         char* name = elf_shstrtab_data + shdr.sh_name;
-   
+
         Elf64_Shdr *addr = (Elf64_Shdr *) elf_shdr + i;
 
         if (shdr.sh_type == SHT_SYMTAB) {
-            //fprintf(stderr, "symtab found at: %p\n", addr); 
+            //fprintf(stderr, "symtab found at: %p\n", addr);
             elf_symtab = addr;
         }
 
@@ -470,7 +473,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
             //fprintf(stderr, ".gnu.version_r found at: %p\n", addr);
             elf_gnu_version_r = addr;
         }
-        
+
         if (shdr.sh_flags & SHF_EXECINSTR) {
             //fprintf(stderr, "found exec section '%s' at: %p\n", name, addr);
             elf_execs[elf_execs_cnt++] = addr;
@@ -486,7 +489,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     }
 
     *out = malloc(sizeof(**out));
-    
+
     disasm_ctx_t* ctx = *out;
     ctx->elf_ident = *((disasm_elf_ident_t *) elf_header);
     ctx->sections = malloc(sizeof(*ctx->sections) * elf_execs_cnt);
@@ -545,7 +548,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
 void free_instruction(disasm_instruction_t *inst) {
     free(inst->inst_name);
     free(inst->inst_args);
-    
+
     if (inst->has_branch_meta) {
         free(inst->branch_meta.pretty_target);
     }

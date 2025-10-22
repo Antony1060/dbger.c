@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include<xed/xed-interface.h>
+
 typedef struct {
     union {
         uint32_t value;

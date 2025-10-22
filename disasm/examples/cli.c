@@ -2,6 +2,7 @@
 
 #include<stdio.h>
 #include<stdlib.h>
+#include<unistd.h>
 #include<sys/mman.h>
 #include<sys/stat.h>
 #include<fcntl.h>
@@ -111,6 +112,9 @@ int main(int argc, char** argv) {
 
     if (elf_data == MAP_FAILED)
         errquit("mmap(..)");
+
+    if (close(fd) < 0)
+        errquit("close(fd)");
 
     disasm_ctx_t *ctx;
 

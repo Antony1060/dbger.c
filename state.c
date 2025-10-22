@@ -12,7 +12,9 @@
 #include "state.h"
 #include "maps.h"
 
-const size_t AROUND_INSTRUCTIONS = 12;
+const size_t AROUND_BEFORE = 4;
+const size_t AROUND_AFTER = 8;
+const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
 
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
 
@@ -74,11 +76,13 @@ static inline size_t find_instruction_in_section(disasm_section_t *section, uint
 }
 
 static void print_rich_instruction(disasm_instruction_t *inst, bool current, uint64_t rip) {
-    if (current)
+    if (current) {
         printf(HBLK " => ");
-    else
+        printf(BYEL "0x%.16lx", rip);
+    } else {
         printf("    ");
-    printf(HYEL "0x%.16lx", rip);
+        printf(HYEL "0x%.16lx", rip);
+    }
 
     if (inst->closest_symbol) {
         printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol->name, inst->closest_symbol_offset);
@@ -123,9 +127,8 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
         return -1;
 
     // find instructions around this one
-    size_t around_half = AROUND_INSTRUCTIONS / 2;
     size_t end = min(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
-    size_t needed_before = AROUND_INSTRUCTIONS - min(end - idx, around_half);
+    size_t needed_before = AROUND_INSTRUCTIONS - min(end - idx, AROUND_AFTER);
     size_t start = needed_before > idx ? 0 : idx - needed_before;
     size_t after = min(AROUND_INSTRUCTIONS - (idx - start), end - idx);
     end = idx + after;
@@ -200,12 +203,15 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t rip) {
 
         __disasm_color_instruction(buffer, name, args);
 
-        if (inst_read == 0)
+        if (inst_read == 0) {
             printf(HBLK " => ");
-        else
+            printf(BYEL "0x%.16lx", rip);
+        } else {
             printf("    ");
+            printf(HYEL "0x%.16lx", rip);
+        }
 
-        printf(HYEL "0x%.16lx" WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, rip, name, args);
+        printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, name, args);
 
         if (jump_target) {
             printf(HBLK "    # 0x%lx", jump_target);

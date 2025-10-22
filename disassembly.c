@@ -1,5 +1,6 @@
 #include<stdio.h>
 #include<stdint.h>
+#include<unistd.h>
 #include<fcntl.h>
 #include<sys/mman.h>
 #include<sys/stat.h>
@@ -20,6 +21,9 @@ int open_and_disasm(disasm_ctx_t **_ctx, void **_elf_data, size_t *stat_size, co
 
     void *elf_data = mmap(0, target_fd_stat.st_size, PROT_READ, MAP_PRIVATE, target_fd, 0);
     if (elf_data == MAP_FAILED)
+        return -1;
+
+    if (close(target_fd) < 0)
         return -1;
 
     disasm_ctx_t *ctx;

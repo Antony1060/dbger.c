@@ -142,8 +142,12 @@ int main(int argc, char **argv) {
         };
         print_state(&s_ctx);
 
-        getchar();
+        int c = getchar();
 
+        if (c == 'c') {
+        if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+            errquit("ptrace(PTRACE_CONT)");
+        } else
         if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
             errquit("ptrace(PTRACE_SINGLESTEP)");
     }

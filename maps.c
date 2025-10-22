@@ -24,6 +24,9 @@ static int read_pid_file(char **content, pid_t pid) {
         r += r_curr;
     }
 
+    if (close(fd) < 0)
+        return -1;
+
     *content = (char *) map_content;
 
     return r;

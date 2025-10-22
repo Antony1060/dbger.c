@@ -79,14 +79,14 @@ static inline size_t find_instruction_in_section(disasm_section_t *section, uint
 static void print_instruction(uint64_t rip, uint64_t addr, char* name, char* args, char* symbol_name, size_t symbol_offset, uint64_t jump_target, char *pretty_target) {
     if (rip == addr) {
         printf(HBLK " => ");
-        printf(BYEL "0x%.16lx", rip);
+        printf(BYEL "0x%.16lx", addr);
     } else {
         if (addr < rip) {
             printf(HBLK "  | ");
         } else {
             printf("    ");
         };
-        printf(HYEL "0x%.16lx", rip);
+        printf(HYEL "0x%.16lx", addr);
     }
 
     if (symbol_name) {
@@ -105,9 +105,15 @@ static void print_instruction(uint64_t rip, uint64_t addr, char* name, char* arg
     printf(CRESET);
 }
 
-// TODO: support non-PIE binaries
 static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
-    uint64_t map_offset = s_ctx->regs->rip - map->addr_start + map->offset;
+    uint64_t current_addr = s_ctx->regs->rip - map->addr_start + map->offset;
+
+    // in case its not a dynamic (PIE) binary,
+    //  RIP is the same as the mapping start and the instruction address
+    //  (I think)
+    if (s_ctx->d_ctx->elf_header.e_type == 0x2) {
+        current_addr = s_ctx->regs->rip;
+    }
 
     disasm_ctx_t *ctx = s_ctx->d_ctx;
     disasm_section_t *section = 0;
@@ -115,7 +121,7 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     for (section_idx = 0; section_idx < ctx->n_sections; section_idx++) {
         disasm_section_t *curr = &ctx->sections[section_idx];
 
-        if (map_offset >= curr->code_start && map_offset <= curr->code_start + curr->size) {
+        if (current_addr >= curr->code_start && current_addr <= curr->code_start + curr->size) {
             section = curr;
             break;
         }
@@ -125,7 +131,7 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
         return -1;
 
     disasm_instruction_t *inst = 0;
-    size_t idx = find_instruction_in_section(section, map_offset, &inst);
+    size_t idx = find_instruction_in_section(section, current_addr, &inst);
     if (!inst)
         return -1;
 

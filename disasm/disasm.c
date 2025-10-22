@@ -6,6 +6,7 @@
 #include<string.h>
 #include<elf.h>
 #include<xed/xed-interface.h>
+#include<assert.h>
 
 #include "disasm.h"
 #include "ansi.h"
@@ -13,6 +14,9 @@
 #define MIN_ELF_SIZE 64
 
 #define errquit(...) return 1
+
+// only supports 64-bit for now
+static_assert((sizeof(disasm_elf_header_t) == 64), "elf_header is not 64 bytes");
 
 static Elf64_Shdr def_symtab = {
     .sh_type = SHT_SYMTAB,
@@ -43,10 +47,8 @@ typedef struct {
     Elf64_Shdr *gnu_version_r;
 } plt_data_t;
 
-static bool validate_elf_header(Elf64_Ehdr *header) {
-    disasm_elf_ident_t elf_ident = *((disasm_elf_ident_t *)header);
-
-    if (elf_ident.ei_magic.value != 0x464c457f)
+static bool validate_elf_header(disasm_elf_header_t *header) {
+    if (header->e_ident.ei_magic.value != 0x464c457f)
         return false;
 
     // TODO: support more than 64-bit x86_64 executables
@@ -404,7 +406,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
         xed_init = 1;
     }
 
-    Elf64_Ehdr *elf_header = (Elf64_Ehdr *) elf_data;
+    disasm_elf_header_t *elf_header = (disasm_elf_header_t *) elf_data;
 
     if (!validate_elf_header(elf_header)) {
         return -1;
@@ -491,7 +493,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
     *out = malloc(sizeof(**out));
 
     disasm_ctx_t* ctx = *out;
-    ctx->elf_ident = *((disasm_elf_ident_t *) elf_header);
+    ctx->elf_header = *elf_header;
     ctx->sections = malloc(sizeof(*ctx->sections) * elf_execs_cnt);
     ctx->n_sections = elf_execs_cnt;
     sym_table_t *plt_table = NULL;

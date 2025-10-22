@@ -20,6 +20,23 @@ typedef struct {
 } disasm_elf_ident_t;
 
 typedef struct {
+    disasm_elf_ident_t e_ident;
+    uint16_t e_type;
+    uint16_t e_machine;
+    uint32_t e_version;
+    uint64_t e_entry;
+    uint64_t e_phoff;
+    uint64_t e_shoff;
+    uint32_t e_flags;
+    uint16_t e_ehsize;
+    uint16_t e_phentsize;
+    uint16_t e_phnum;
+    uint16_t e_shentsize;
+    uint16_t e_shnum;
+    uint16_t e_shstrndx;
+} disasm_elf_header_t;
+
+typedef struct {
     // pointer to some location in elf binary
     char *name;
     uintptr_t addr;
@@ -70,7 +87,7 @@ typedef struct {
 } disasm_section_t;
 
 typedef struct {
-    disasm_elf_ident_t elf_ident;
+    disasm_elf_header_t elf_header;
     disasm_section_t *sections;
     size_t n_sections;
 } disasm_ctx_t;

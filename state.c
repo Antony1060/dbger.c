@@ -75,28 +75,31 @@ static inline size_t find_instruction_in_section(disasm_section_t *section, uint
     return 0;
 }
 
-static void print_rich_instruction(disasm_instruction_t *inst, bool current, uint64_t rip) {
-    if (current) {
+// a lot of params lol
+static void print_instruction(uint64_t rip, uint64_t addr, char* name, char* args, char* symbol_name, size_t symbol_offset, uint64_t jump_target, char *pretty_target) {
+    if (rip == addr) {
         printf(HBLK " => ");
         printf(BYEL "0x%.16lx", rip);
     } else {
-        printf("    ");
+        if (addr < rip) {
+            printf(HBLK "  | ");
+        } else {
+            printf("    ");
+        };
         printf(HYEL "0x%.16lx", rip);
     }
 
-    if (inst->closest_symbol) {
-        printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol->name, inst->closest_symbol_offset);
+    if (symbol_name) {
+        printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", symbol_name, symbol_offset);
     }
 
-    printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->inst_name, inst->inst_args);
+    printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, name, args);
 
-    if (inst->has_branch_meta) {
-        disasm_branch_meta_t *branch = &inst->branch_meta;
+    if (jump_target) {
+        if (pretty_target)
+            printf(" %s", pretty_target);
 
-        if (branch->pretty_target[0])
-            printf(" %s", branch->pretty_target);
-
-        printf(HBLK "    # 0x%lx", branch->resolved_addr);
+        printf(HBLK "    # 0x%lx", jump_target);
     }
 
     printf(CRESET);
@@ -135,10 +138,16 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
 
     for (size_t i = start; i <= end; i++) {
         disasm_instruction_t *curr = &section->instructions[i];
-        uint64_t rip = curr->addr < inst->addr ?
+
+        // ternareee
+        uint64_t addr = curr->addr < inst->addr ?
             s_ctx->regs->rip - (inst->addr - curr->addr):
             s_ctx->regs->rip + (curr->addr - inst->addr);
-        print_rich_instruction(curr, i == idx, rip);
+        char *sym_name = curr->closest_symbol ? curr->closest_symbol->name : 0;
+        uint64_t jump_target = curr->has_branch_meta ? curr->branch_meta.resolved_addr : 0;
+        char *pretty_target = curr->has_branch_meta && curr->branch_meta.pretty_target[0] ? curr->branch_meta.pretty_target : 0;
+
+        print_instruction(s_ctx->regs->rip, addr, curr->inst_name, curr->inst_args, sym_name, curr->closest_symbol_offset, jump_target, pretty_target);
         printf("\n");
     }
 
@@ -182,11 +191,12 @@ void print_state(state_ctx *ctx) {
     print_separator("end");
 }
 
-static size_t print_forward_disassembly(pid_t pid, uint64_t rip) {
+static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
     char buffer[256];
     char name[32];
     char args[256];
 
+    uint64_t rip = _rip;
     size_t inst_read = 0;
     while (inst_read < AROUND_INSTRUCTIONS + 1) {
         const size_t data_len = 15;
@@ -203,20 +213,7 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t rip) {
 
         __disasm_color_instruction(buffer, name, args);
 
-        if (inst_read == 0) {
-            printf(HBLK " => ");
-            printf(BYEL "0x%.16lx", rip);
-        } else {
-            printf("    ");
-            printf(HYEL "0x%.16lx", rip);
-        }
-
-        printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, name, args);
-
-        if (jump_target) {
-            printf(HBLK "    # 0x%lx", jump_target);
-        }
-
+        print_instruction(_rip, rip, name, args, 0, 0, jump_target, 0);
         printf(CRESET "\n");
 
         rip += shift;

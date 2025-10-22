@@ -73,12 +73,12 @@ static inline size_t find_instruction_in_section(disasm_section_t *section, uint
     return 0;
 }
 
-static void print_rich_instruction(state_ctx *ctx, disasm_instruction_t *inst, bool current) {
+static void print_rich_instruction(disasm_instruction_t *inst, bool current, uint64_t rip) {
     if (current)
         printf(HBLK " => ");
     else
         printf("    ");
-    printf(HYEL "0x%.16llx", ctx->regs->rip);
+    printf(HYEL "0x%.16lx", rip);
 
     if (inst->closest_symbol) {
         printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", inst->closest_symbol->name, inst->closest_symbol_offset);
@@ -131,7 +131,11 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     end = idx + after;
 
     for (size_t i = start; i <= end; i++) {
-        print_rich_instruction(s_ctx, &section->instructions[i], i == idx);
+        disasm_instruction_t *curr = &section->instructions[i];
+        uint64_t rip = curr->addr < inst->addr ?
+            s_ctx->regs->rip - (inst->addr - curr->addr):
+            s_ctx->regs->rip + (curr->addr - inst->addr);
+        print_rich_instruction(curr, i == idx, rip);
         printf("\n");
     }
 

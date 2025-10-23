@@ -175,10 +175,10 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
         return -1;
 
     // find instructions around this one
-    size_t end = min(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
-    size_t needed_before = AROUND_INSTRUCTIONS - min(end - idx, AROUND_AFTER);
+    size_t end = MIN(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
+    size_t needed_before = AROUND_INSTRUCTIONS - MIN(end - idx, AROUND_AFTER);
     size_t start = needed_before > idx ? 0 : idx - needed_before;
-    size_t after = min(AROUND_INSTRUCTIONS - (idx - start), end - idx);
+    size_t after = MIN(AROUND_INSTRUCTIONS - (idx - start), end - idx);
     end = idx + after;
 
     for (size_t i = start; i <= end; i++) {

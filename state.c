@@ -19,16 +19,54 @@ const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
 
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
 
-static void print_regs(state_ctx *ctx) {
-    #define printreg(reg) printf("\t" GRN #reg HBLK ": " BLU "0x%llx " HBLK "(" CYN "%lld" HBLK ") " CRESET "\n", ctx->regs->reg, ctx->regs->reg);
+static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
+    (void) ctx; (void) reg;
+}
 
+static void print_register_resolved(state_ctx *ctx, unsigned long long reg) {
+    printf("0x%llx", reg);
+
+    if (ctx->stack && reg >= ctx->stack->addr_start && reg <= ctx->stack->addr_end) {
+        printf(HMAG " (stack)");
+        print_memory_chain(ctx, reg);
+        return;
+    } else if (ctx->heap && reg >= ctx->heap->addr_start && reg <= ctx->heap->addr_end) {
+        printf(HYEL " (heap)");
+        print_memory_chain(ctx, reg);
+        return;
+    }
+
+    for (size_t i = 0; i < ctx->maps->length; i++) {
+        proc_map *map = &ctx->maps->items[i];
+
+        if (map->perms & MAP_PERM_EXEC && reg >= map->addr_start && reg <= map->addr_end) {
+            printf(HRED " (code)");
+        }
+    }
+}
+
+static void print_regs(state_ctx *ctx) {
+    #define printreg(reg) do { \
+        printf("\t" GRN "%3s" HBLK ": " BLU, #reg "\0"); \
+        print_register_resolved(ctx, ctx->regs->reg); \
+        printf(CRESET "\n"); \
+    } while (0);
+
+    printreg(rip);
     printreg(rax);
     printreg(rbx);
     printreg(rcx);
     printreg(rdx);
     printreg(rsi);
     printreg(rdi);
-    printreg(rip);
+    printreg(r8);
+    printreg(r9);
+    printreg(r10);
+    printreg(r11);
+    printreg(r12);
+    printreg(r13);
+    printreg(r14);
+    printreg(r15);
     printreg(rsp);
     printreg(rbp);
 }

@@ -49,13 +49,19 @@ int main(int argc, char **argv) {
     // guess the first executable part of the binary,
     //  the idea is to skip the glibc runtime that the process starts in
     proc_map guess_exec = {0};
+    proc_map *stack_map = 0;
+    proc_map *heap_map = 0;
 
     // find first executable section in the binary
     for (size_t i = 0; i < maps.length; i++) {
-        proc_map map = maps.items[i];
+        proc_map *map = &maps.items[i];
 
-        if (map.perms & MAP_PERM_EXEC && !strncmp_min(map.pathname, target_pathname)) {
-            guess_exec = map;
+        if (map->perms & MAP_PERM_EXEC && !strncmp_min(map->pathname, target_pathname)) {
+            guess_exec = *map;
+        } else if (!strncmp_min(map->pathname, "[stack]")) {
+            stack_map = map;
+        } else if (!strncmp_min(map->pathname, "[heap]")) {
+            heap_map = map;
         }
     }
 
@@ -139,6 +145,8 @@ int main(int argc, char **argv) {
             .regs = &regs,
             .d_ctx = d_ctx,
             .maps = &maps,
+            .stack = stack_map,
+            .heap = heap_map,
         };
         print_state(&s_ctx);
 

@@ -11,6 +11,7 @@
 #include "util.h"
 #include "state.h"
 #include "maps.h"
+#include "disassembly.h"
 
 const size_t AROUND_BEFORE = 4;
 const size_t AROUND_AFTER = 8;
@@ -76,30 +77,30 @@ static inline size_t find_instruction_in_section(disasm_section_t *section, uint
 }
 
 // a lot of params lol
-static void print_instruction(uint64_t rip, uint64_t addr, char* name, char* args, char* symbol_name, size_t symbol_offset, uint64_t jump_target, char *pretty_target) {
-    if (rip == addr) {
+static void print_instruction(uint64_t rip, basic_instruction *inst) {
+    if (rip == inst->addr) {
         printf(HBLK " => ");
-        printf(BYEL "0x%.16lx", addr);
+        printf(BYEL "0x%.16lx", inst->addr);
     } else {
-        if (addr < rip) {
+        if (inst->addr < rip) {
             printf(HBLK "  | ");
         } else {
             printf("    ");
         };
-        printf(HYEL "0x%.16lx", addr);
+        printf(HYEL "0x%.16lx", inst->addr);
     }
 
-    if (symbol_name) {
-        printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", symbol_name, symbol_offset);
+    if (inst->symbol_name) {
+        printf(WHT " <" GRN "%s" HBLU "+0x%.2lx" WHT ">", inst->symbol_name, inst->symbol_offset);
     }
 
-    printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, name, args);
+    printf(WHT ": " BLU "%s" CRESET "\t " HGRN "%s" CRESET, inst->name, inst->args);
 
-    if (jump_target) {
-        if (pretty_target)
-            printf(" %s", pretty_target);
+    if (inst->jump_target) {
+        if (inst->pretty_target && inst->pretty_target[0])
+            printf(" %s", inst->pretty_target);
 
-        printf(HBLK "    # 0x%lx", jump_target);
+        printf(HBLK "    # 0x%lx", inst->jump_target);
     }
 
     printf(CRESET);
@@ -149,11 +150,21 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
         uint64_t addr = curr->addr < inst->addr ?
             s_ctx->regs->rip - (inst->addr - curr->addr):
             s_ctx->regs->rip + (curr->addr - inst->addr);
-        char *sym_name = curr->closest_symbol ? curr->closest_symbol->name : 0;
-        uint64_t jump_target = curr->has_branch_meta ? curr->branch_meta.resolved_addr : 0;
-        char *pretty_target = curr->has_branch_meta && curr->branch_meta.pretty_target[0] ? curr->branch_meta.pretty_target : 0;
 
-        print_instruction(s_ctx->regs->rip, addr, curr->inst_name, curr->inst_args, sym_name, curr->closest_symbol_offset, jump_target, pretty_target);
+        basic_instruction _inst = {
+            .addr = addr,
+            .name = curr->inst_name,
+            .args = curr->inst_args,
+            .symbol_name = curr->closest_symbol ? curr->closest_symbol->name : 0,
+            .symbol_offset = curr->closest_symbol_offset,
+        };
+
+        if (curr->has_branch_meta) {
+            _inst.jump_target = curr->branch_meta.resolved_addr;
+            _inst.pretty_target = curr->branch_meta.pretty_target;
+        }
+
+        print_instruction(s_ctx->regs->rip, &_inst);
         printf("\n");
     }
 
@@ -219,7 +230,14 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
 
         __disasm_color_instruction(buffer, name, args);
 
-        print_instruction(_rip, rip, name, args, 0, 0, jump_target, 0);
+        basic_instruction _inst = {
+            .addr = rip,
+            .name = name,
+            .args = args,
+            .jump_target = jump_target,
+        };
+
+        print_instruction(_rip, &_inst);
         printf(CRESET "\n");
 
         rip += shift;

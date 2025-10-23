@@ -1,8 +1,6 @@
 #ifndef __DBGER_DISASSEMBLY
 #define __DBGER_DISASSEMBLY
 
-#include "maps.h"
-
 typedef struct {
     uint64_t addr;
     char *name;

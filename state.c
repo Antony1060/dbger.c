@@ -5,6 +5,7 @@
 #include<sys/ptrace.h>
 #include<sys/user.h>
 #include<sys/uio.h>
+#include<ctype.h>
 #include<xed/xed-interface.h>
 
 #include "ansi.h"
@@ -12,6 +13,7 @@
 #include "state.h"
 #include "maps.h"
 #include "disassembly.h"
+#include "ds_set_u64.h"
 
 const size_t AROUND_BEFORE = 4;
 const size_t AROUND_AFTER = 8;
@@ -19,22 +21,75 @@ const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
 
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
 
+static void print_value_raw(unsigned long long reg) {
+    printf(HBLU "0x%llx", reg);
+
+    for (int i = 0; i < 8; i++) {
+        uint64_t mask = 0xfful << (i * 8);
+        char c = (char) ((reg & mask) >> (i * 8));
+        if (!isprint(c)) {
+            if (i > 0)
+                printf("\"" WHT ")" CRESET);
+            break;
+        }
+
+        if (i == 0)
+            printf(WHT " (" HYEL "\"");
+
+        printf("%c", c);
+    }
+}
+
 static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
-    (void) ctx; (void) reg;
+    ds_set_u64 visited;
+    ds_set_u64_init(&visited);
+
+    while (1) {
+        if (ds_set_u64_find(&visited, reg))
+            break;
+        
+        ds_set_u64_insert(&visited, reg);
+
+        bool heap = 0;
+        bool stack = 0;
+        if (
+            (stack = (ctx->stack && reg >= ctx->stack->addr_start && reg <= ctx->stack->addr_end)) ||
+            (heap = (ctx->heap && reg >= ctx->heap->addr_start && reg <= ctx->heap->addr_end))
+        ) {
+            errno = 0;
+            long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg, 0);
+            if (errno != 0) {
+                printf(RED " (error)");
+                break;
+            }
+
+
+            if (stack) {
+                printf(HMAG "0x%llx", reg);
+            } else if (heap) {
+                printf(HYEL "0x%llx", reg);
+            } else {
+                printf(RED " (error)");
+                break;
+            }
+
+            printf(HBLK " -> " CRESET);
+
+            reg = word;
+
+            continue;
+        }
+
+        break;
+    }
+
+    ds_set_u64_free(&visited);
+
+    print_value_raw(reg);
 }
 
 static void print_register_resolved(state_ctx *ctx, unsigned long long reg) {
-    printf("0x%llx", reg);
-
-    if (ctx->stack && reg >= ctx->stack->addr_start && reg <= ctx->stack->addr_end) {
-        printf(HMAG " (stack)");
-        print_memory_chain(ctx, reg);
-        return;
-    } else if (ctx->heap && reg >= ctx->heap->addr_start && reg <= ctx->heap->addr_end) {
-        printf(HYEL " (heap)");
-        print_memory_chain(ctx, reg);
-        return;
-    }
+    print_memory_chain(ctx, reg);
 
     for (size_t i = 0; i < ctx->maps->length; i++) {
         proc_map *map = &ctx->maps->items[i];
@@ -69,6 +124,8 @@ static void print_regs(state_ctx *ctx) {
     printreg(r15);
     printreg(rsp);
     printreg(rbp);
+
+    #undef printreg
 }
 
 static void print_stack(state_ctx *ctx) {

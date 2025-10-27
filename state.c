@@ -19,32 +19,103 @@ const size_t AROUND_BEFORE = 4;
 const size_t AROUND_AFTER = 8;
 const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
 
+const size_t STRING_PRINT_MAX = 32;
+
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
 
-static void print_value_raw(unsigned long long reg) {
-    printf(HBLU "0x%llx", reg);
+// returns how many were printed if it expects the string to continue
+//  0 otherwise
+static size_t try_print_as_string(unsigned long long reg, size_t curr_printed) {
+    unsigned char *as_str = (unsigned char *) &reg;
 
-    for (int i = 0; i < 8; i++) {
-        uint64_t mask = 0xfful << (i * 8);
-        char c = (char) ((reg & mask) >> (i * 8));
-        if (!isprint(c)) {
-            if (i > 0)
-                printf("\"" WHT ")" CRESET);
+    // don't do anything if the first symbol is not printable
+    if (!isprint(as_str[0])) {
+        return 0;
+    }
+
+    if (curr_printed == 0)
+        printf(" " HYEL "\"");
+
+    size_t printable = 0;
+    size_t i;
+    for (i = 0; i < sizeof(reg); i++) {
+        if (curr_printed + i >= STRING_PRINT_MAX) {
+            printable = 0;
+            printf("...");
             break;
         }
 
-        if (i == 0)
-            printf(WHT " (" HYEL "\"");
+        unsigned char c = as_str[i];
 
+        if (c == 0)
+            break;
+
+        if (!isprint(c)) {
+            printf("\\x%.2x", c);
+            continue;
+        }
+
+        printable++;
         printf("%c", c);
     }
+
+    bool want_more = printable == sizeof(reg);
+    if (!want_more)
+        printf("\"" CRESET);
+
+    return want_more ? printable : 0;
+}
+
+static void print_value_raw(state_ctx *ctx, unsigned long long reg, unsigned long long reg_src) {
+    printf(HBLU "0x%llx", reg);
+
+    // this is a very opinionated and heuristic flow
+    size_t printed = 0;
+    size_t curr;
+    while ((curr = try_print_as_string(reg, printed)) > 0) {
+        printed += curr;
+        reg_src += sizeof(long);
+
+        // check bounds
+        //  if reg_src is 0 or (it's not on stack and it's not on heap)
+        if (
+            !reg_src ||
+            (!(ctx->stack && reg_src >= ctx->stack->addr_start && reg_src <= ctx->stack->addr_end) &&
+            !(ctx->heap && reg_src >= ctx->heap->addr_start && reg_src <= ctx->heap->addr_end))
+        ) {
+            break;
+        }
+
+        errno = 0;
+        long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg_src, 0);
+        if (errno != 0) {
+            printf(RED " (error)");
+            break;
+        }
+
+        reg = word;
+    }
+
+    // if it's still higher than 0, meaning loop was broken because it couldn't read the next word
+    //  we need to close the string manually
+    if (curr > 0)
+        printf(HYEL "\"" CRESET);
+}
+
+static void print_code_reg(state_ctx *ctx, unsigned long long reg) {
+    (void) ctx;
+    printf(HRED "0x%llx (code)", reg);
+
+    // if it's in binary, print rich, otherwise, poke data and invoke the disassembler
+    //  basically the same thing that is done in the disassembly section
 }
 
 static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
+    unsigned long long reg_src;
     while (1) {
         if (ds_set_u64_find(visited, reg))
             break;
-        
+
         ds_set_u64_insert(visited, reg);
 
         bool heap = 0;
@@ -72,27 +143,30 @@ static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned lon
 
             printf(HBLK " -> " CRESET);
 
+            reg_src = reg;
             reg = word;
 
             continue;
         }
 
+        for (size_t i = 0; i < ctx->maps->length; i++) {
+            proc_map *map = &ctx->maps->items[i];
+
+            // if we're in a code region, call a custom function and end the loop
+            if (map->perms & MAP_PERM_EXEC && reg >= map->addr_start && reg <= map->addr_end) {
+                print_code_reg(ctx, reg);
+                return;
+            }
+        }
+
         break;
     }
 
-    print_value_raw(reg);
+    print_value_raw(ctx, reg, reg_src);
 }
 
 static void print_register_resolved(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
     print_memory_chain(ctx, visited, reg);
-
-    for (size_t i = 0; i < ctx->maps->length; i++) {
-        proc_map *map = &ctx->maps->items[i];
-
-        if (map->perms & MAP_PERM_EXEC && reg >= map->addr_start && reg <= map->addr_end) {
-            printf(HRED " (code)");
-        }
-    }
 }
 
 static void print_regs(state_ctx *ctx) {

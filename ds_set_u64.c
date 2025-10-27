@@ -1,5 +1,6 @@
 #include<stdlib.h>
 #include<stdint.h>
+#include<string.h>
 
 #include "ds_set_u64.h"
 
@@ -68,6 +69,11 @@ bool ds_set_u64_find(ds_set_u64 *s, uint64_t item) {
     }
 
     return false;
+}
+
+void ds_set_u64_clear(ds_set_u64 *s) {
+    s->size = 0;
+    memset(s->table, 0, s->capacity * sizeof(*s->table));
 }
 
 void ds_set_u64_free(ds_set_u64 *s) {

@@ -40,15 +40,12 @@ static void print_value_raw(unsigned long long reg) {
     }
 }
 
-static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
-    ds_set_u64 visited;
-    ds_set_u64_init(&visited);
-
+static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
     while (1) {
-        if (ds_set_u64_find(&visited, reg))
+        if (ds_set_u64_find(visited, reg))
             break;
         
-        ds_set_u64_insert(&visited, reg);
+        ds_set_u64_insert(visited, reg);
 
         bool heap = 0;
         bool stack = 0;
@@ -83,13 +80,11 @@ static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
         break;
     }
 
-    ds_set_u64_free(&visited);
-
     print_value_raw(reg);
 }
 
-static void print_register_resolved(state_ctx *ctx, unsigned long long reg) {
-    print_memory_chain(ctx, reg);
+static void print_register_resolved(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
+    print_memory_chain(ctx, visited, reg);
 
     for (size_t i = 0; i < ctx->maps->length; i++) {
         proc_map *map = &ctx->maps->items[i];
@@ -101,9 +96,13 @@ static void print_register_resolved(state_ctx *ctx, unsigned long long reg) {
 }
 
 static void print_regs(state_ctx *ctx) {
+    ds_set_u64 visited;
+    ds_set_u64_init(&visited);
+
     #define printreg(reg) do { \
         printf("\t" GRN "%3s" HBLK ": " BLU, #reg "\0"); \
-        print_register_resolved(ctx, ctx->regs->reg); \
+        ds_set_u64_clear(&visited); \
+        print_register_resolved(ctx, &visited, ctx->regs->reg); \
         printf(CRESET "\n"); \
     } while (0);
 

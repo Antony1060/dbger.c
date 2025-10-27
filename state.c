@@ -59,7 +59,7 @@ static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
             errno = 0;
             long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg, 0);
             if (errno != 0) {
-                printf(RED " (error)");
+                printf(RED "(error) ");
                 break;
             }
 
@@ -69,7 +69,7 @@ static void print_memory_chain(state_ctx *ctx, unsigned long long reg) {
             } else if (heap) {
                 printf(HYEL "0x%llx", reg);
             } else {
-                printf(RED " (error)");
+                printf(RED "(error) ");
                 break;
             }
 

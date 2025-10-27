@@ -1,6 +1,8 @@
 #ifndef __DBGER_SET_U64
 #define __DBGER_SET_U64
 
+#include<stdbool.h>
+
 typedef struct {
     size_t size;
     size_t capacity;

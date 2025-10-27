@@ -20,6 +20,22 @@ int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
     return readlink(file_name, pathname, n);
 }
 
+// this looks for the first executable section in the actual binary
+//  and also the stack and heap
+void find_relevant_maps(char *target_pathname, proc_map_array *maps, proc_map *exec, proc_map **stack, proc_map **heap) {
+    for (size_t i = 0; i < maps->length; i++) {
+        proc_map *map = &maps->items[i];
+
+        if (map->perms & MAP_PERM_EXEC && !strncmp_min(map->pathname, target_pathname)) {
+            *exec = *map;
+        } else if (!strncmp_min(map->pathname, "[stack]")) {
+            *stack = map;
+        } else if (!strncmp_min(map->pathname, "[heap]")) {
+            *heap = map;
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <command...>\n", argv[0]);
@@ -52,18 +68,7 @@ int main(int argc, char **argv) {
     proc_map *stack_map = 0;
     proc_map *heap_map = 0;
 
-    // find first executable section in the binary
-    for (size_t i = 0; i < maps.length; i++) {
-        proc_map *map = &maps.items[i];
-
-        if (map->perms & MAP_PERM_EXEC && !strncmp_min(map->pathname, target_pathname)) {
-            guess_exec = *map;
-        } else if (!strncmp_min(map->pathname, "[stack]")) {
-            stack_map = map;
-        } else if (!strncmp_min(map->pathname, "[heap]")) {
-            heap_map = map;
-        }
-    }
+    find_relevant_maps(target_pathname, &maps, &guess_exec, &stack_map, &heap_map);
 
     __print_maps(&maps);
 
@@ -124,6 +129,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Failed to read /proc/%d/maps\n", pid);
             break;
         }
+
+        find_relevant_maps(target_pathname, &maps, &guess_exec, &stack_map, &heap_map);
 
         if (old_maps_size != maps.length) {
             printf("* maps possibly changed\n");

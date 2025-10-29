@@ -222,10 +222,6 @@ static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned lon
     print_value_raw(ctx, reg, reg_src);
 }
 
-static void print_register_resolved(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
-    print_memory_chain(ctx, visited, reg);
-}
-
 static void print_regs(state_ctx *ctx) {
     ds_set_u64 visited;
     ds_set_u64_init(&visited);
@@ -233,7 +229,7 @@ static void print_regs(state_ctx *ctx) {
     #define printreg(reg) do { \
         printf("\t" GRN "%3s" HBLK ": " BLU, #reg "\0"); \
         ds_set_u64_clear(&visited); \
-        print_register_resolved(ctx, &visited, ctx->regs->reg); \
+        print_memory_chain(ctx, &visited, ctx->regs->reg); \
         printf(CRESET "\n"); \
     } while (0);
 

@@ -1,6 +1,8 @@
 #ifndef __DBGER_STATE
 #define __DBGER_STATE
 
+#include<sys/user.h>
+
 #include<disasm/disasm.h>
 
 #include "maps.h"

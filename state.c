@@ -24,6 +24,8 @@ const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
 const size_t STRING_PRINT_MAX = 32;
 
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
+static void print_instruction(uint64_t rip, basic_instruction *inst);
+static proc_map *find_map_at_addr(state_ctx *ctx, uint64_t addr);
 
 // returns how many were printed if it expects the string to continue
 //  0 otherwise
@@ -104,12 +106,65 @@ static void print_value_raw(state_ctx *ctx, unsigned long long reg, unsigned lon
         printf(HYEL "\"" CRESET);
 }
 
+// maybe too fancy?
+static void print_reg_instruction(basic_instruction *inst) {
+    if (inst->symbol_name) {
+        printf(WHT "<" GRN "%s" HBLU "+0x%.2lx" WHT "> ", inst->symbol_name, inst->symbol_offset);
+    }
+
+    printf(BLU "%s " HGRN "%s" CRESET, inst->name, inst->args);
+
+    if (inst->jump_target) {
+        if (inst->pretty_target && inst->pretty_target[0])
+            printf(" %s", inst->pretty_target);
+
+        printf(HBLK " # 0x%lx", inst->jump_target);
+    }
+
+    printf(CRESET);
+}
+
 static void print_code_reg(state_ctx *ctx, unsigned long long reg) {
     (void) ctx;
-    printf(HRED "0x%llx (code)", reg);
+    printf(HRED "0x%llx", reg);
 
-    // if it's in binary, print rich, otherwise, poke data and invoke the disassembler
-    //  basically the same thing that is done in the disassembly section
+    proc_map *current = find_map_at_addr(ctx, reg);
+
+    // so it's always available in both rich and in place path
+    basic_instruction _inst = {0};
+
+    if (!current || strncmp_min(current->pathname, ctx->target_pathname))
+        goto in_place_disassemble;
+
+    disasm_section_t *section = 0;
+    disasm_instruction_t *inst = 0;
+    if (find_rich_instruction_in_map(ctx, current, &section, &inst) < 0)
+        goto in_place_disassemble;
+
+    instruction_convert_from_disasm(inst, reg, &_inst);
+
+    printf(HBLK " -> ");
+    print_reg_instruction(&_inst);
+
+    return;
+
+in_place_disassemble:
+    char buffer[256];
+    char name[32];
+    char args[256];
+
+    if(disassemble_remote_at_addr(ctx->pid, reg, &_inst, buffer, name, args) < 0)
+        goto fail;
+
+    printf(HBLK " -> ");
+    print_reg_instruction(&_inst);
+
+    return;
+
+fail:
+    printf(HRED " (code)" CRESET);
+
+    return;
 }
 
 static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned long long reg) {
@@ -211,36 +266,12 @@ static void print_call_trace(state_ctx *ctx) {
     (void) ctx;
 }
 
-proc_map *find_current_map(state_ctx *ctx) {
+static proc_map *find_map_at_addr(state_ctx *ctx, uint64_t addr) {
     for (size_t i = 0; i < ctx->maps->length; i++) {
         proc_map *map = &ctx->maps->items[i];
 
-        uint64_t rip = ctx->regs->rip;
-        if (map->perms & MAP_PERM_EXEC && rip >= map->addr_start && rip <= map->addr_end)
+        if (map->perms & MAP_PERM_EXEC && addr >= map->addr_start && addr <= map->addr_end)
             return map;
-    }
-
-    return 0;
-}
-
-static inline size_t find_instruction_in_section(disasm_section_t *section, uint64_t addr, disasm_instruction_t **inst) {
-    *inst = 0;
-
-    size_t low = 0;
-    size_t high = section->n_instructions - 1;
-
-    while (low <= high) {
-        size_t mid = low + (high - low) / 2;
-
-        disasm_instruction_t *curr = &section->instructions[mid];
-        if (curr->addr < addr)
-            low = mid + 1;
-        else if (curr->addr > addr)
-            high = mid - 1;
-        else {
-            *inst = curr;
-            return mid;
-        }
     }
 
     return 0;
@@ -277,34 +308,13 @@ static void print_instruction(uint64_t rip, basic_instruction *inst) {
 }
 
 static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
-    uint64_t current_addr = s_ctx->regs->rip - map->addr_start + map->offset;
-
-    // in case its not a dynamic (PIE) binary,
-    //  RIP is the same as the mapping start and the instruction address
-    //  (I think)
-    if (s_ctx->d_ctx->elf_header.e_type == 0x2) {
-        current_addr = s_ctx->regs->rip;
-    }
-
-    disasm_ctx_t *ctx = s_ctx->d_ctx;
     disasm_section_t *section = 0;
-    size_t section_idx;
-    for (section_idx = 0; section_idx < ctx->n_sections; section_idx++) {
-        disasm_section_t *curr = &ctx->sections[section_idx];
-
-        if (current_addr >= curr->code_start && current_addr <= curr->code_start + curr->size) {
-            section = curr;
-            break;
-        }
-    }
-
-    if (!section)
-        return -1;
-
     disasm_instruction_t *inst = 0;
-    size_t idx = find_instruction_in_section(section, current_addr, &inst);
-    if (!inst)
+    ssize_t _idx = find_rich_instruction_in_map(s_ctx, map, &section, &inst);
+    if (_idx < 0)
         return -1;
+
+    size_t idx = (size_t) _idx;
 
     // find instructions around this one
     size_t end = MIN(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
@@ -321,18 +331,8 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
             s_ctx->regs->rip - (inst->addr - curr->addr):
             s_ctx->regs->rip + (curr->addr - inst->addr);
 
-        basic_instruction _inst = {
-            .addr = addr,
-            .name = curr->inst_name,
-            .args = curr->inst_args,
-            .symbol_name = curr->closest_symbol ? curr->closest_symbol->name : 0,
-            .symbol_offset = curr->closest_symbol_offset,
-        };
-
-        if (curr->has_branch_meta) {
-            _inst.jump_target = curr->branch_meta.resolved_addr;
-            _inst.pretty_target = curr->branch_meta.pretty_target;
-        }
+        basic_instruction _inst = {0};
+        instruction_convert_from_disasm(curr, addr, &_inst);
 
         print_instruction(s_ctx->regs->rip, &_inst);
         printf("\n");
@@ -342,7 +342,7 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
 }
 
 static void print_disassembly(state_ctx *ctx) {
-    proc_map *current = find_current_map(ctx);
+    proc_map *current = find_map_at_addr(ctx, ctx->regs->rip);
     if (!current) {
         printf(RED "unknown memory executing\n" CRESET);
     } else {
@@ -386,31 +386,14 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
     uint64_t rip = _rip;
     size_t inst_read = 0;
     while (inst_read < AROUND_INSTRUCTIONS + 1) {
-        const size_t data_len = 15;
-        uint8_t data[data_len];
-        struct iovec remote_inst = { (void*) rip, data_len };
-        struct iovec local_inst = { &data, data_len };
-
-        process_vm_readv(pid, &local_inst, 1, &remote_inst, 1, 0);
-
-        uint64_t jump_target;
-        size_t shift = __disasm_read_first_instruction(data, data_len, buffer, 256, (void *) rip, &jump_target, NULL);
-        if (shift == 0)
+        basic_instruction _inst = {0};
+        if(disassemble_remote_at_addr(pid, rip, &_inst, buffer, name, args) < 0)
             break;
-
-        __disasm_color_instruction(buffer, name, args);
-
-        basic_instruction _inst = {
-            .addr = rip,
-            .name = name,
-            .args = args,
-            .jump_target = jump_target,
-        };
 
         print_instruction(_rip, &_inst);
         printf(CRESET "\n");
 
-        rip += shift;
+        rip += _inst.size;
         inst_read++;
     }
 

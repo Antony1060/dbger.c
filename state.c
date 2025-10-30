@@ -225,6 +225,33 @@ static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned lon
     printf(CRESET);
 }
 
+static void print_flags(state_ctx *ctx) {
+    uint8_t carry = ctx->regs->eflags & UINT64_C(0x0001);
+    uint8_t zero = ctx->regs->eflags & UINT64_C(0x0040);
+    uint8_t sign = ctx->regs->eflags & UINT64_C(0x0080);
+    uint8_t overflow = ctx->regs->eflags & UINT64_C(0x0800);
+
+    printf("  " BGRN "flags" HBLK ": ");
+
+    #define printflag(name, flag) do { \
+        printf(BWHT name HYEL "="); \
+        if (flag) \
+            printf(BGRN "1"); \
+        else \
+            printf(WHT "0"); \
+        printf("  "); \
+    } while (0);
+
+    printflag("CF", carry);
+    printflag("ZF", zero);
+    printflag("SF", sign);
+    printflag("OF", overflow);
+
+    #undef printflag
+
+    printf(CRESET "\n");
+}
+
 static void print_regs(state_ctx *ctx) {
     ds_set_u64 visited;
     ds_set_u64_init(&visited);
@@ -257,6 +284,8 @@ static void print_regs(state_ctx *ctx) {
     #undef printreg
 
     ds_set_u64_free(&visited);
+
+    print_flags(ctx);
 }
 
 static void print_stack(state_ctx *ctx) {
@@ -289,10 +318,10 @@ static void print_stack(state_ctx *ctx) {
 
         ds_set_u64_clear(&visited);
         print_memory_chain(ctx, &visited, word);
-        
+
         printf("\n");
     }
-    
+
     ds_set_u64_free(&visited);
 }
 

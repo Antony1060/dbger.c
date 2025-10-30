@@ -21,6 +21,8 @@ const size_t DISASSEMBLY_BEFORE = 4;
 const size_t DISASSEMBLY_AFTER = 8;
 const size_t DISASSEMBLY_INSTRUCTIONS = DISASSEMBLY_BEFORE + DISASSEMBLY_AFTER;
 
+const size_t STACK_ROWS = 12;
+
 const size_t STRING_PRINT_MAX = 32;
 
 static size_t print_forward_disassembly(pid_t pid, uint64_t rip);
@@ -220,6 +222,7 @@ static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned lon
     }
 
     print_value_raw(ctx, reg, reg_src);
+    printf(CRESET);
 }
 
 static void print_regs(state_ctx *ctx) {
@@ -227,7 +230,7 @@ static void print_regs(state_ctx *ctx) {
     ds_set_u64_init(&visited);
 
     #define printreg(reg) do { \
-        printf("\t" GRN "%3s" HBLK ": " BLU, #reg "\0"); \
+        printf("    " GRN "%3s" HBLK ": " BLU, #reg "\0"); \
         ds_set_u64_clear(&visited); \
         print_memory_chain(ctx, &visited, ctx->regs->reg); \
         printf(CRESET "\n"); \
@@ -252,13 +255,45 @@ static void print_regs(state_ctx *ctx) {
     printreg(rbp);
 
     #undef printreg
+
+    ds_set_u64_free(&visited);
 }
 
 static void print_stack(state_ctx *ctx) {
     uint64_t sp = ctx->regs->rsp;
-    uint64_t bp = ctx->regs->rsp;
+    uint64_t bp = ctx->regs->rbp;
 
-    (void) sp; (void) bp;
+    ds_set_u64 visited;
+    ds_set_u64_init(&visited);
+
+    size_t reg_len = sizeof(void *);
+    for (size_t curr = sp; curr < sp + (STACK_ROWS * reg_len); curr += reg_len) {
+        size_t diff = curr - sp;
+
+        errno = 0;
+        long word = ptrace(PTRACE_PEEKDATA, ctx->pid, curr, 0);
+        if (errno != 0) {
+            printf(RED " (error)");
+            break;
+        }
+
+        if (curr == sp) {
+            printf(BHBLU "$rsp" HBLK " | ");
+        } else if (curr == bp) {
+            printf(BHBLU "$rbp" HBLK " | ");
+        } else {
+            printf(HBLK "     | ");
+        }
+
+        printf(HYEL "0x%lx " WHT "<" GRN "rsp" HBLU "+0x%.2lx" WHT ">: ", curr, diff);
+
+        ds_set_u64_clear(&visited);
+        print_memory_chain(ctx, &visited, word);
+        
+        printf("\n");
+    }
+    
+    ds_set_u64_free(&visited);
 }
 
 static void print_call_trace(state_ctx *ctx) {
@@ -383,8 +418,8 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
     char args[256];
 
     uint64_t rip = _rip;
-    size_t inst_read = 0;
-    while (inst_read < DISASSEMBLY_INSTRUCTIONS + 1) {
+    size_t inst_read;
+    for (inst_read = 0; inst_read < DISASSEMBLY_INSTRUCTIONS + 1; inst_read++) {
         basic_instruction _inst = {0};
         if(disassemble_remote_at_addr(pid, rip, &_inst, buffer, name, args) < 0)
             break;
@@ -393,7 +428,6 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
         printf(CRESET "\n");
 
         rip += _inst.size;
-        inst_read++;
     }
 
     return inst_read;

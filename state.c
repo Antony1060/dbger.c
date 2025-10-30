@@ -17,9 +17,9 @@
 #include "disassembly.h"
 #include "ds_set_u64.h"
 
-const size_t AROUND_BEFORE = 4;
-const size_t AROUND_AFTER = 8;
-const size_t AROUND_INSTRUCTIONS = AROUND_BEFORE + AROUND_AFTER;
+const size_t DISASSEMBLY_BEFORE = 4;
+const size_t DISASSEMBLY_AFTER = 8;
+const size_t DISASSEMBLY_INSTRUCTIONS = DISASSEMBLY_BEFORE + DISASSEMBLY_AFTER;
 
 const size_t STRING_PRINT_MAX = 32;
 
@@ -255,7 +255,10 @@ static void print_regs(state_ctx *ctx) {
 }
 
 static void print_stack(state_ctx *ctx) {
-    (void) ctx;
+    uint64_t sp = ctx->regs->rsp;
+    uint64_t bp = ctx->regs->rsp;
+
+    (void) sp; (void) bp;
 }
 
 static void print_call_trace(state_ctx *ctx) {
@@ -313,10 +316,10 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     size_t idx = (size_t) _idx;
 
     // find instructions around this one
-    size_t end = MIN(section->n_instructions - 1, idx + AROUND_INSTRUCTIONS);
-    size_t needed_before = AROUND_INSTRUCTIONS - MIN(end - idx, AROUND_AFTER);
+    size_t end = MIN(section->n_instructions - 1, idx + DISASSEMBLY_BEFORE);
+    size_t needed_before = DISASSEMBLY_BEFORE - MIN(end - idx, DISASSEMBLY_AFTER);
     size_t start = needed_before > idx ? 0 : idx - needed_before;
-    size_t after = MIN(AROUND_INSTRUCTIONS - (idx - start), end - idx);
+    size_t after = MIN(DISASSEMBLY_BEFORE - (idx - start), end - idx);
     end = idx + after;
 
     for (size_t i = start; i <= end; i++) {
@@ -381,7 +384,7 @@ static size_t print_forward_disassembly(pid_t pid, uint64_t _rip) {
 
     uint64_t rip = _rip;
     size_t inst_read = 0;
-    while (inst_read < AROUND_INSTRUCTIONS + 1) {
+    while (inst_read < DISASSEMBLY_INSTRUCTIONS + 1) {
         basic_instruction _inst = {0};
         if(disassemble_remote_at_addr(pid, rip, &_inst, buffer, name, args) < 0)
             break;

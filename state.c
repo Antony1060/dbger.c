@@ -301,10 +301,8 @@ static void print_stack(state_ctx *ctx) {
 
         errno = 0;
         long word = ptrace(PTRACE_PEEKDATA, ctx->pid, curr, 0);
-        if (errno != 0) {
-            printf(RED " (error)");
+        if (errno != 0)
             break;
-        }
 
         if (curr == sp) {
             printf(BHBLU "$rsp" HBLK " | ");

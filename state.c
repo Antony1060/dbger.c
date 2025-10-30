@@ -21,7 +21,7 @@ const size_t DISASSEMBLY_BEFORE = 4;
 const size_t DISASSEMBLY_AFTER = 8;
 const size_t DISASSEMBLY_INSTRUCTIONS = DISASSEMBLY_BEFORE + DISASSEMBLY_AFTER;
 
-const size_t STACK_ROWS = 12;
+const size_t STACK_ROWS = 8;
 
 const size_t STRING_PRINT_MAX = 32;
 
@@ -351,10 +351,10 @@ static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     size_t idx = (size_t) _idx;
 
     // find instructions around this one
-    size_t end = MIN(section->n_instructions - 1, idx + DISASSEMBLY_BEFORE);
-    size_t needed_before = DISASSEMBLY_BEFORE - MIN(end - idx, DISASSEMBLY_AFTER);
+    size_t end = MIN(section->n_instructions - 1, idx + DISASSEMBLY_INSTRUCTIONS);
+    size_t needed_before = DISASSEMBLY_INSTRUCTIONS - MIN(end - idx, DISASSEMBLY_AFTER);
     size_t start = needed_before > idx ? 0 : idx - needed_before;
-    size_t after = MIN(DISASSEMBLY_BEFORE - (idx - start), end - idx);
+    size_t after = MIN(DISASSEMBLY_INSTRUCTIONS - (idx - start), end - idx);
     end = idx + after;
 
     for (size_t i = start; i <= end; i++) {

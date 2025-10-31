@@ -18,7 +18,7 @@ int open_and_disasm(disasm_ctx_t **_ctx, void **_elf_data, size_t *stat_size, co
 
 void instruction_convert_from_disasm(disasm_instruction_t *inst, uint64_t addr, basic_instruction *_inst);
 
-ssize_t find_rich_instruction_in_map(state_ctx *ctx, proc_map *map, disasm_section_t **section, disasm_instruction_t **_inst);
+ssize_t find_rich_instruction_in_map(state_ctx *ctx, uint64_t addr, proc_map *map, disasm_section_t **section, disasm_instruction_t **_inst);
 
 int disassemble_remote_at_addr(pid_t pid, uint64_t addr, basic_instruction *_inst, char* work_buf, char *work_name, char *work_args);
 

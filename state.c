@@ -127,7 +127,6 @@ static void print_reg_instruction(basic_instruction *inst) {
 }
 
 static void print_code_reg(state_ctx *ctx, unsigned long long reg) {
-    (void) ctx;
     printf(HRED "0x%llx", reg);
 
     proc_map *current = find_map_at_addr(ctx, reg);
@@ -140,7 +139,7 @@ static void print_code_reg(state_ctx *ctx, unsigned long long reg) {
 
     disasm_section_t *section = 0;
     disasm_instruction_t *inst = 0;
-    if (find_rich_instruction_in_map(ctx, current, &section, &inst) < 0)
+    if (find_rich_instruction_in_map(ctx, reg, current, &section, &inst) < 0)
         goto in_place_disassemble;
 
     instruction_convert_from_disasm(inst, reg, &_inst);
@@ -371,7 +370,7 @@ static void print_instruction(uint64_t rip, basic_instruction *inst) {
 static int print_rich_disassembly(state_ctx *s_ctx, proc_map *map) {
     disasm_section_t *section = 0;
     disasm_instruction_t *inst = 0;
-    ssize_t _idx = find_rich_instruction_in_map(s_ctx, map, &section, &inst);
+    ssize_t _idx = find_rich_instruction_in_map(s_ctx, s_ctx->regs->rip, map, &section, &inst);
     if (_idx < 0)
         return -1;
 

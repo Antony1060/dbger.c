@@ -77,14 +77,14 @@ void instruction_convert_from_disasm(disasm_instruction_t *inst, uint64_t addr, 
     }
 }
 
-ssize_t find_rich_instruction_in_map(state_ctx *s_ctx, proc_map *map, disasm_section_t **section, disasm_instruction_t **_inst) {
-    uint64_t current_addr = s_ctx->regs->rip - map->addr_start + map->offset;
+ssize_t find_rich_instruction_in_map(state_ctx *s_ctx, uint64_t addr, proc_map *map, disasm_section_t **section, disasm_instruction_t **_inst) {
+    uint64_t current_addr = addr - map->addr_start + map->offset;
 
     // in case its not a dynamic (PIE) binary,
     //  RIP is the same as the mapping start and the instruction address
     //  (I think)
     if (s_ctx->d_ctx->elf_header.e_type == 0x2) {
-        current_addr = s_ctx->regs->rip;
+        current_addr = addr;
     }
 
     disasm_ctx_t *ctx = s_ctx->d_ctx;

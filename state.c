@@ -17,6 +17,8 @@
 #include "disassembly.h"
 #include "ds_set_u64.h"
 
+const size_t REG_SIZE = sizeof(void *);
+
 const size_t DISASSEMBLY_BEFORE = 4;
 const size_t DISASSEMBLY_AFTER = 8;
 const size_t DISASSEMBLY_INSTRUCTIONS = DISASSEMBLY_BEFORE + DISASSEMBLY_AFTER;
@@ -93,7 +95,7 @@ static void print_value_raw(state_ctx *ctx, unsigned long long reg, unsigned lon
         }
 
         errno = 0;
-        long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg_src, 0);
+        unsigned long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg_src, 0);
         if (errno != 0) {
             printf(RED " (error)");
             break;
@@ -183,7 +185,7 @@ static void print_memory_chain(state_ctx *ctx, ds_set_u64 *visited, unsigned lon
             (heap = (ctx->heap && reg >= ctx->heap->addr_start && reg <= ctx->heap->addr_end))
         ) {
             errno = 0;
-            long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg, 0);
+            unsigned long word = ptrace(PTRACE_PEEKDATA, ctx->pid, reg, 0);
             if (errno != 0) {
                 printf(RED "(error) ");
                 break;
@@ -294,12 +296,11 @@ static void print_stack(state_ctx *ctx) {
     ds_set_u64 visited;
     ds_set_u64_init(&visited);
 
-    size_t reg_len = sizeof(void *);
-    for (size_t curr = sp; curr < sp + (STACK_ROWS * reg_len); curr += reg_len) {
+    for (size_t curr = sp; curr < sp + (STACK_ROWS * REG_SIZE); curr += REG_SIZE) {
         size_t diff = curr - sp;
 
         errno = 0;
-        long word = ptrace(PTRACE_PEEKDATA, ctx->pid, curr, 0);
+        unsigned long word = ptrace(PTRACE_PEEKDATA, ctx->pid, curr, 0);
         if (errno != 0)
             break;
 
@@ -323,7 +324,61 @@ static void print_stack(state_ctx *ctx) {
 }
 
 static void print_call_trace(state_ctx *ctx) {
-    (void) ctx;
+    uint64_t bp = ctx->regs->rbp;
+
+    uint8_t depth = 0;
+    while (1) {
+        uint64_t curr;
+        if (depth == 0) {
+            curr = ctx->regs->rip;
+        } else {
+            errno = 0;
+            unsigned long new_bp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp, 0);
+            if (errno != 0)
+                break;
+
+            errno = 0;
+            unsigned long ret_jmp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp + REG_SIZE, 0);
+            if (errno != 0)
+                break;
+
+            bp = new_bp;
+
+            curr = ret_jmp;
+        }
+
+        proc_map *map = find_map_at_addr(ctx, curr);
+        if (!map)
+            break;
+
+        size_t map_start = map->addr_start;
+        size_t map_offset = map->offset;
+        if (ctx->d_ctx->elf_header.e_type == 0x2) {
+            map_start = 0;
+            map_offset = 0;
+        }
+
+        disasm_section_t *section = 0;
+        disasm_instruction_t *inst = 0;
+        ssize_t idx = find_rich_instruction_in_map(ctx, curr, map, &section, &inst);
+        if (idx < 0)
+            break;
+
+        disasm_symbol_t *sym = inst->closest_symbol;
+        if (!sym)
+            break;
+
+        printf(WHT "%u. ", depth);
+
+        if (depth == 0)
+            printf(BGRN "%s", sym->name);
+        else
+            printf(GRN "%s", sym->name);
+
+        printf(HBLU "+%lx" WHT "()" HBLK " <- " WHT "%lx\n", inst->closest_symbol_offset, inst->addr + map_start - map_offset);
+
+        depth++;
+    }
 }
 
 static proc_map *find_map_at_addr(state_ctx *ctx, uint64_t addr) {

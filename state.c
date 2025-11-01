@@ -376,10 +376,11 @@ static void print_call_trace(state_ctx *ctx) {
                 } else if (val_sp_after_exec && (ctx->stack && ctx->stack->addr_start <= val_sp && ctx->stack->addr_end >= val_sp)) {
                     bp = val_sp;
                     curr = val_sp_after;
-                } else
-                    goto normal_bp;
+                } else {
+                    bp = val_bp;
+                    curr = val_bp_after;
+                }
             } else {
-normal_bp:
                 bp = val_bp;
                 curr = val_bp_after;
             }

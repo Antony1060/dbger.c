@@ -354,6 +354,8 @@ static void print_call_trace(state_ctx *ctx) {
                 break;
 
             // eh, I don't like this, I need to figure out a better way of choosing this
+            //  functions usually have little part at the beginning and the end where they modify rsp and rbp
+            //  this is some fucked up heuristic to show the call trace when those two aren't yet set up properly
             if (depth == 1) {
                 bool val_sp_exec = 0;
                 bool val_sp_after_exec = 0;
@@ -366,7 +368,7 @@ static void print_call_trace(state_ctx *ctx) {
 
                     if (map->addr_start <= val_sp && map->addr_end >= val_sp)
                         val_sp_exec = 1;
-                    
+
                     if (map->addr_start <= val_sp_after && map->addr_end >= val_sp_after)
                         val_sp_after_exec = 1;
                 }

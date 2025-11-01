@@ -23,7 +23,7 @@ const size_t DISASSEMBLY_BEFORE = 4;
 const size_t DISASSEMBLY_AFTER = 8;
 const size_t DISASSEMBLY_INSTRUCTIONS = DISASSEMBLY_BEFORE + DISASSEMBLY_AFTER;
 
-const size_t STACK_ROWS = 8;
+const size_t STACK_ROWS = 12;
 
 const size_t STRING_PRINT_MAX = 32;
 
@@ -325,6 +325,7 @@ static void print_stack(state_ctx *ctx) {
 
 static void print_call_trace(state_ctx *ctx) {
     uint64_t bp = ctx->regs->rbp;
+    uint64_t sp = ctx->regs->rsp;
 
     uint8_t depth = 0;
     while (1) {
@@ -333,18 +334,55 @@ static void print_call_trace(state_ctx *ctx) {
             curr = ctx->regs->rip;
         } else {
             errno = 0;
-            unsigned long new_bp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp, 0);
+            unsigned long val_bp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp, 0);
             if (errno != 0)
                 break;
 
             errno = 0;
-            unsigned long ret_jmp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp + REG_SIZE, 0);
+            unsigned long val_bp_after = ptrace(PTRACE_PEEKDATA, ctx->pid, bp + REG_SIZE, 0);
             if (errno != 0)
                 break;
 
-            bp = new_bp;
+            errno = 0;
+            unsigned long val_sp = ptrace(PTRACE_PEEKDATA, ctx->pid, sp, 0);
+            if (errno != 0)
+                break;
 
-            curr = ret_jmp;
+            errno = 0;
+            unsigned long val_sp_after = ptrace(PTRACE_PEEKDATA, ctx->pid, sp + REG_SIZE, 0);
+            if (errno != 0)
+                break;
+
+            // eh, I don't like this, I need to figure out a better way of choosing this
+            if (depth == 1) {
+                bool val_sp_exec = 0;
+                bool val_sp_after_exec = 0;
+
+                for (size_t i = 0; i < ctx->maps->length; i++) {
+                    proc_map *map = &ctx->maps->items[i];
+
+                    if (!(map->perms & MAP_PERM_EXEC))
+                        continue;
+
+                    if (map->addr_start <= val_sp && map->addr_end >= val_sp)
+                        val_sp_exec = 1;
+                    
+                    if (map->addr_start <= val_sp_after && map->addr_end >= val_sp_after)
+                        val_sp_after_exec = 1;
+                }
+
+                if (val_sp_exec) {
+                    curr = val_sp;
+                } else if (val_sp_after_exec && (ctx->stack && ctx->stack->addr_start <= val_sp && ctx->stack->addr_end >= val_sp)) {
+                    bp = val_sp;
+                    curr = val_sp_after;
+                } else
+                    goto normal_bp;
+            } else {
+normal_bp:
+                bp = val_bp;
+                curr = val_bp_after;
+            }
         }
 
         proc_map *map = find_map_at_addr(ctx, curr);

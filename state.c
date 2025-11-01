@@ -351,31 +351,44 @@ static void print_call_trace(state_ctx *ctx) {
         if (!map)
             break;
 
-        size_t map_start = map->addr_start;
-        size_t map_offset = map->offset;
-        if (ctx->d_ctx->elf_header.e_type == 0x2) {
-            map_start = 0;
-            map_offset = 0;
+        if (!strncmp_min(map->pathname, ctx->target_pathname)) {
+            size_t map_start = map->addr_start;
+            size_t map_offset = map->offset;
+            if (ctx->d_ctx->elf_header.e_type == 0x2) {
+                map_start = 0;
+                map_offset = 0;
+            }
+
+            disasm_section_t *section = 0;
+            disasm_instruction_t *inst = 0;
+            ssize_t idx = find_rich_instruction_in_map(ctx, curr, map, &section, &inst);
+            if (idx < 0)
+                break;
+
+            disasm_symbol_t *sym = inst->closest_symbol;
+            if (!sym)
+                break;
+
+            printf(WHT "%u. ", depth);
+
+            if (depth == 0)
+                printf(BGRN "%s", sym->name);
+            else
+                printf(GRN "%s", sym->name);
+
+            printf(HBLU "+%lx" WHT "()" HBLK " <- " WHT "0x%lx\n", inst->closest_symbol_offset, inst->addr + map_start - map_offset);
+        } else {
+            char *map_name = basename(map->pathname);
+
+            printf(WHT "%u. " HBLK "somewhere in ", depth);
+
+            if (depth == 0)
+                printf(BRED "%s", map_name);
+            else
+                printf(RED "%s", map_name);
+
+            printf(WHT "()" HBLK " <- " WHT "0x%lx\n", curr);
         }
-
-        disasm_section_t *section = 0;
-        disasm_instruction_t *inst = 0;
-        ssize_t idx = find_rich_instruction_in_map(ctx, curr, map, &section, &inst);
-        if (idx < 0)
-            break;
-
-        disasm_symbol_t *sym = inst->closest_symbol;
-        if (!sym)
-            break;
-
-        printf(WHT "%u. ", depth);
-
-        if (depth == 0)
-            printf(BGRN "%s", sym->name);
-        else
-            printf(GRN "%s", sym->name);
-
-        printf(HBLU "+%lx" WHT "()" HBLK " <- " WHT "%lx\n", inst->closest_symbol_offset, inst->addr + map_start - map_offset);
 
         depth++;
     }

@@ -119,7 +119,19 @@ int main(int argc, char **argv) {
         int signal = WSTOPSIG(wstatus);
         if (signal != SIGTRAP) {
             fprintf(stderr, "Signal: %d (SIG%s)\n", signal, sigabbrev_np(signal));
-            continue;
+
+            bool cont = 1;
+            switch (signal) {
+                case SIGCHLD:
+                    cont = 0;
+                    break;
+                default:
+                    cont = 1;
+                    break;
+            }
+
+            if (cont) continue;
+            else break;
         }
 
         // reload maps

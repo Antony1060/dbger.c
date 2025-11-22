@@ -92,7 +92,7 @@ typedef struct {
     size_t n_sections;
 } disasm_ctx_t;
 
-int disasm_from_elf(disasm_ctx_t **out, void *elf_data);
+int disasm_from_elf(disasm_ctx_t *out, void *elf_data);
 
 void free_instruction(disasm_instruction_t *inst);
 

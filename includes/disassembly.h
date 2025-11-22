@@ -14,7 +14,7 @@ typedef struct {
     char *pretty_target;
 } basic_instruction;
 
-int open_and_disasm(disasm_ctx_t **_ctx, void **_elf_data, size_t *stat_size, const char *target_pathname);
+int open_and_disasm(disasm_ctx_t *ctx, void **_elf_data, size_t *stat_size, const char *target_pathname);
 
 void instruction_convert_from_disasm(disasm_instruction_t *inst, uint64_t addr, basic_instruction *_inst);
 

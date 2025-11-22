@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 
     // load and disassemble the binary
     void *elf_data;
-    disasm_ctx_t *d_ctx;
+    disasm_ctx_t d_ctx = {0};
     size_t target_file_size;
     if (open_and_disasm(&d_ctx, &elf_data, &target_file_size, target_pathname) < 0) {
         fprintf(stderr, "ERROR: failed to disassemble\n");
@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
             .pid = pid,
             .target_pathname = target_pathname,
             .regs = &regs,
-            .d_ctx = d_ctx,
+            .d_ctx = &d_ctx,
             .maps = &maps,
             .stack = stack_map,
             .heap = heap_map,
@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
 
     free_proc_maps(&maps);
 
-    disasm_free(d_ctx);
+    disasm_free(&d_ctx);
 
     munmap(elf_data, target_file_size);
 

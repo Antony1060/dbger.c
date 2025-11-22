@@ -116,16 +116,16 @@ int main(int argc, char** argv) {
     if (close(fd) < 0)
         errquit("close(fd)");
 
-    disasm_ctx_t *ctx;
+    disasm_ctx_t ctx = {0};
 
     if (disasm_from_elf(&ctx, elf_data) < 0) {
         fprintf(stderr, "Failed to disassemble\n");
         return 1;
     }
 
-    print_disassembly(ctx, target_section);
+    print_disassembly(&ctx, target_section);
 
-    disasm_free(ctx);
+    disasm_free(&ctx);
 
     munmap(elf_data, file_size);
 

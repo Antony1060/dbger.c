@@ -399,7 +399,7 @@ static int handle_exec_section(disasm_section_t* out_section, void *elf_data, El
 // the parser will (unsafely) start assuming the elf is valid and try parsing whatever bytes after *elf_data
 //  the returned context will also reference memory from elf_data, so it must exist as long as the output is used (TODO?)
 __attribute__((used))
-int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
+int disasm_from_elf(disasm_ctx_t* out, void *elf_data) {
     static bool xed_init = 0;
     if (!xed_init) {
         xed_tables_init();
@@ -490,9 +490,7 @@ int disasm_from_elf(disasm_ctx_t** out, void *elf_data) {
         return -1;
     }
 
-    *out = malloc(sizeof(**out));
-
-    disasm_ctx_t* ctx = *out;
+    disasm_ctx_t* ctx = out;
     ctx->elf_header = *elf_header;
     ctx->sections = malloc(sizeof(*ctx->sections) * elf_execs_cnt);
     ctx->n_sections = elf_execs_cnt;
@@ -571,6 +569,5 @@ void disasm_free(disasm_ctx_t *ctx) {
         free_section(&ctx->sections[i]);
 
     free(ctx->sections);
-    free(ctx);
 }
 

@@ -16,21 +16,21 @@ All structs can be found in [disasm.h](./disasm.h)
 //  disasm_ctx_t points to sections in it
 void *elf_data = /* raw ELF data*/;
 
-disasm_ctx_t *ctx;
+disasm_ctx_t ctx = {0};
 
 if (disasm_from_elf(&ctx, elf_data) < 0) {
     printf("Failed to disassemble");
     exit(1);
 }
 
-for (size_t i = 0; i < ctx->n_sections; i++) {
-    disasm_section_t *section = &ctx->sections[i];
+for (size_t i = 0; i < ctx.n_sections; i++) {
+    disasm_section_t *section = &ctx.sections[i];
 
     printf("section %s (%lu (%zu)):\n", section->name, section->code_start, section->size);
     for (size_t j = 0; j < section->n_symbols; j++) {
         disasm_symbol_t *sym = &section->symbols[j];
 
-        printf("\t %p: %s\n", sym->addr, sym->name);
+        printf("\t 0x%lx: %s\n", sym->addr, sym->name);
     }
 
     for (size_t j = 0; j < section->n_instructions; j++) {
@@ -51,7 +51,7 @@ for (size_t i = 0; i < ctx->n_sections; i++) {
     }
 }
 
-disasm_free(ctx);
+disasm_free(&ctx);
 ```
 
 ### Examples

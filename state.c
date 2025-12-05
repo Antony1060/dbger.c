@@ -334,14 +334,14 @@ static void print_call_trace(state_ctx *ctx) {
             curr = ctx->regs->rip;
         } else {
             errno = 0;
+            int bp_errno;
             unsigned long val_bp = ptrace(PTRACE_PEEKDATA, ctx->pid, bp, 0);
-            if (errno != 0)
-                break;
+            bp_errno = errno;
 
             errno = 0;
+            int bp_after_errno;
             unsigned long val_bp_after = ptrace(PTRACE_PEEKDATA, ctx->pid, bp + REG_SIZE, 0);
-            if (errno != 0)
-                break;
+            bp_after_errno = errno;
 
             errno = 0;
             unsigned long val_sp = ptrace(PTRACE_PEEKDATA, ctx->pid, sp, 0);
@@ -378,9 +378,11 @@ static void print_call_trace(state_ctx *ctx) {
                 } else if (val_sp_after_exec && (ctx->stack && ctx->stack->addr_start <= val_sp && ctx->stack->addr_end >= val_sp)) {
                     bp = val_sp;
                     curr = val_sp_after;
-                } else {
+                } else if (bp_errno == 0 && bp_after_errno == 0) {
                     bp = val_bp;
                     curr = val_bp_after;
+                } else {
+                    break;
                 }
             } else {
                 bp = val_bp;

@@ -1,8 +1,10 @@
-## disasm.c
-A quite basic x86_64 disassembler library intended for use in the debugger that I'm making.
+# disasm.c
 
-### Building
-#### Required dependencies
+`disasm.c` is an x86_64 disassembler library built on top of [Intel XED](https://github.com/intelxed/xed). It is designed to be easily integrated into broader projects (like debuggers) for automated analysis of ELF binaries.
+
+## Building
+
+### Required dependencies
 - [Intel XED](https://github.com/intelxed/xed)
 
 ```sh

@@ -15,8 +15,10 @@
         a < b ? a : b; \
     })
 
-static inline int strncmp_min(const char *first, const char *second) {
-    return strncmp(first, second, MIN(strlen(first), strlen(second)) + 1);
-}
+#define MAX(_a, _b) ({ \
+        __typeof__(_a) a = (_a); \
+        __typeof__(_b) b = (_b); \
+        a > b ? a : b; \
+    })
 
 #endif // __DBGER_UTIL

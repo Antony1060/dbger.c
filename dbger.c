@@ -12,6 +12,7 @@
 #include "state.h"
 #include "trace.h"
 #include "disassembly.h"
+#include "command.h"
 
 int get_pid_pathname(pid_t pid, char *pathname, size_t n) {
     char file_name[256];
@@ -26,11 +27,11 @@ void find_relevant_maps(char *target_pathname, proc_map_array *maps, proc_map *e
     for (size_t i = 0; i < maps->length; i++) {
         proc_map *map = &maps->items[i];
 
-        if (map->perms & MAP_PERM_EXEC && !strncmp_min(map->pathname, target_pathname)) {
+        if (map->perms & MAP_PERM_EXEC && !strcmp(map->pathname, target_pathname)) {
             *exec = *map;
-        } else if (!strncmp_min(map->pathname, "[stack]")) {
+        } else if (!strcmp(map->pathname, "[stack]")) {
             *stack = map;
-        } else if (!strncmp_min(map->pathname, "[heap]")) {
+        } else if (!strcmp(map->pathname, "[heap]")) {
             *heap = map;
         }
     }
@@ -169,14 +170,30 @@ int main(int argc, char **argv) {
         };
         print_state(&s_ctx);
 
-        int c = getchar();
+        trace_next next;
+        if (handle_input(&s_ctx, &next) < 0) {
+            fprintf(stderr, "Failed to process user input");
+            break;
+        }
 
-        if (c == 'c') {
-        if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
-            errquit("ptrace(PTRACE_CONT)");
-        } else
-        if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
-            errquit("ptrace(PTRACE_SINGLESTEP)");
+        switch (next) {
+            case TRACE_CONTINUE:
+                if (ptrace(PTRACE_CONT, pid, 0, 0) < 0)
+                    errquit("ptrace(PTRACE_CONT)");
+                continue;
+            case TRACE_INST_STEP:
+                if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) < 0)
+                    errquit("ptrace(PTRACE_SINGLESTEP)");
+                continue;
+            case TRACE_EXIT:
+                printf(GRN "Exiting\n");
+                break;
+            default:
+                fprintf(stderr, RED " ! Failed to process trace step\n");
+                break;
+        }
+
+        break;
     }
 
     free_proc_maps(&maps);

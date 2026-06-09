@@ -136,7 +136,7 @@ static void print_code_reg(state_ctx *ctx, unsigned long long reg) {
     // so it's always available in both rich and in place path
     basic_instruction _inst = {0};
 
-    if (!current || strncmp_min(current->pathname, ctx->target_pathname))
+    if (!current || strcmp(current->pathname, ctx->target_pathname))
         goto in_place_disassemble;
 
     disasm_section_t *section = 0;
@@ -394,7 +394,7 @@ static void print_call_trace(state_ctx *ctx) {
         if (!map)
             break;
 
-        if (!strncmp_min(map->pathname, ctx->target_pathname)) {
+        if (!strcmp(map->pathname, ctx->target_pathname)) {
             size_t map_start = map->addr_start;
             size_t map_offset = map->offset;
             if (ctx->d_ctx->elf_header.e_type == 0x2) {
@@ -520,7 +520,7 @@ static void print_disassembly(state_ctx *ctx) {
         printf(BWHT "currently in " BHRED "%s\n" CRESET, current->pathname);
     }
 
-    if (!current || strncmp_min(current->pathname, ctx->target_pathname)) {
+    if (!current || strcmp(current->pathname, ctx->target_pathname)) {
         printf(HYEL "  not the source binary, expect poorer disassembly\n" CRESET);
         print_forward_disassembly(ctx->pid, ctx->regs->rip);
         return;

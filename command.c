@@ -42,7 +42,23 @@ trace behaviour:
 + <enter> is last selected trace behaviour
 */
 static void print_help() {
-    printf("TODO\n");
+    printf(BWHT "Commands\n" CRESET);
+    printf("    " GRN "%-42s" CRESET " %s\n", "help", "Show this help message");
+    printf("\n");
+    printf("    " GRN "%-42s" CRESET " %s\n", "c, continue", "Continue until the next breakpoint");
+    printf("    " GRN "%-42s" CRESET " %s\n", "s, step", "Step one instruction");
+    printf("    " GRN "%-42s" CRESET " %s\n", "[n]c, [n]s", "Continue or step n times");
+    printf("\n");
+    printf("    " GRN "%-42s" CRESET " %s\n", "b, bp, breakpoint <addr/symbol>[+offset]", "Set a breakpoint");
+    printf("    " GRN "%-42s" CRESET " %s\n", "lb, list-bp, list-breakpoints", "List breakpoints");
+    printf("    " GRN "%-42s" CRESET " %s\n", "ls, list-sym, list-symbols", "List symbols");
+    printf("    " GRN "%-42s" CRESET " %s\n", "maps", "List process memory maps");
+    printf("    " GRN "%-42s" CRESET " %s\n", "da, disas, disassemble <symbol>", "Disassemble a symbol");
+    printf("    " GRN "%-42s" CRESET " %s\n", "da, disas, disassemble <addr> <n>", "Disassemble n instructions at an address");
+    printf("    " GRN "%-42s" CRESET " %s\n", "memdump <addr> <n>", "Dump n bytes at an address");
+    printf("    " GRN "%-42s" CRESET " %s\n", "exit", "Exit the debugger");
+    printf("\n");
+    printf("    " GRN "%-42s" CRESET " %s\n", "<enter>", "Repeat the last continue/step action");
 }
 
 static void format_perms(int perms, char* buffer) {

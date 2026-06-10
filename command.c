@@ -133,6 +133,8 @@ int handle_input(state_ctx *ctx, trace_next *next) {
         if (line_n == 0)
             NEXT_RET(default_behaviour);
 
+        add_history(line);
+
         // [n]c or [n]s behaviour for multipl continues/steps
         bool is_cont = 0;
         if ((is_cont = line[line_n - 1] == 'c') || line[line_n - 1] == 's') {

@@ -4,6 +4,7 @@
 #include<sys/ptrace.h>
 #include<sys/user.h>
 #include<sys/mman.h>
+#include<readline/history.h>
 
 #include "ansi.h"
 #include "util.h"
@@ -101,6 +102,8 @@ int main(int argc, char **argv) {
             errquit("ptrace(PTRACE_CONT)");
     }
 
+    using_history();
+
     // main loop
     int wstatus;
     while (1) {
@@ -195,6 +198,8 @@ int main(int argc, char **argv) {
 
         break;
     }
+
+    clear_history();
 
     free_proc_maps(&maps);
 

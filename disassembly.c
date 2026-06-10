@@ -2,6 +2,7 @@
 #include<stdint.h>
 #include<unistd.h>
 #include<fcntl.h>
+#include<string.h>
 #include<sys/mman.h>
 #include<sys/stat.h>
 #include<sys/uio.h>
@@ -129,6 +130,20 @@ int disassemble_remote_at_addr(pid_t pid, uint64_t addr, basic_instruction *_ins
     _inst->name = work_name;
     _inst->args = work_args;
     _inst->jump_target = jump_target;
+
+    return 0;
+}
+
+disasm_symbol_t *find_symbol_by_name(disasm_ctx_t *ctx, const char *name) {
+    for (size_t i = 0; i < ctx->n_sections; i++) {
+        disasm_section_t *section = &ctx->sections[i];
+
+        for (size_t j = 0; j < section->n_symbols; j++) {
+            disasm_symbol_t *sym = &section->symbols[j];
+            if (strcmp(sym->name, name) == 0)
+                return sym;
+        }
+    }
 
     return 0;
 }

@@ -22,4 +22,6 @@ ssize_t find_rich_instruction_in_map(state_ctx *ctx, uint64_t addr, proc_map *ma
 
 int disassemble_remote_at_addr(pid_t pid, uint64_t addr, basic_instruction *_inst, char* work_buf, char *work_name, char *work_args);
 
+disasm_symbol_t *find_symbol_by_name(disasm_ctx_t *ctx, const char *name); 
+
 #endif // __DBGER_DISASSEMBLY

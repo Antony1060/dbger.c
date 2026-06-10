@@ -153,6 +153,7 @@ int main(int argc, char **argv) {
             __print_maps(&maps);
         }
 
+        // see if rip is one of the breakpoints
         if (break_present(&last_break)) {
             if (end_breakpoint(&last_break, pid) < 0)
                 errquit("end_breakpoint(..)");
@@ -168,6 +169,7 @@ int main(int argc, char **argv) {
             .regs = &regs,
             .d_ctx = &d_ctx,
             .maps = &maps,
+            .self_exec = &guess_exec,
             .stack = stack_map,
             .heap = heap_map,
         };

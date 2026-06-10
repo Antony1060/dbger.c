@@ -6,7 +6,7 @@
 
 typedef struct {
     uint64_t _word;
-    uint64_t _addr;
+    uint64_t addr;
 } break_meta;
 
 bool break_present(break_meta *meta);

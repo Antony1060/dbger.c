@@ -13,6 +13,7 @@ typedef struct {
     struct user_regs_struct *regs;
     disasm_ctx_t *d_ctx;
     proc_map_array *maps;
+    proc_map *self_exec;
     proc_map *stack;
     proc_map *heap;
 } state_ctx;
